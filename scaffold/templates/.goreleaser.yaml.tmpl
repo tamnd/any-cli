@@ -1,0 +1,173 @@
+# GoReleaser turns one tag push into everything a user might install from: raw
+# archives, Linux packages (deb, rpm, apk), a multi-arch container image, and
+# entries for the package managers (Homebrew, Scoop). `git tag vX.Y.Z && git
+# push --tags` fans out to all of them through .github/workflows/release.yml.
+#
+# Publish steps that push to a repository you do not own yet (the Homebrew tap,
+# the Scoop bucket) self-disable when their token is absent. A release with no
+# extra secrets still produces every downloadable artifact and the container
+# image; each manager lights up the moment its repository and token exist.
+version: 2
+
+project_name: << .Binary >>
+
+before:
+  hooks:
+    - go mod download
+
+builds:
+  - id: << .Binary >>
+    binary: << .Binary >>
+    main: ./cmd/<< .Binary >>
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+      - -X << .Module >>/cli.Version={{ .Version }}
+      - -X << .Module >>/cli.Commit={{ .ShortCommit }}
+      - -X << .Module >>/cli.Date={{ .CommitDate }}
+    mod_timestamp: "{{ .CommitTimestamp }}"
+    targets:
+      - linux_amd64
+      - linux_arm64
+      - linux_arm_7
+      - linux_386
+      - darwin_amd64
+      - darwin_arm64
+      - windows_amd64
+      - windows_arm64
+      - freebsd_amd64
+      - freebsd_arm64
+
+archives:
+  - id: default
+    name_template: "<< .Binary >>_{{ .Version }}_{{ .Os }}_{{ .Arch }}{{ with .Arm }}v{{ . }}{{ end }}"
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    files:
+      - LICENSE
+      - README.md
+
+nfpms:
+  - id: linux-packages
+    package_name: << .Binary >>
+    file_name_template: "{{ .ConventionalFileName }}"
+    vendor: << .Owner >>
+    homepage: << .GitHubURL >>
+    maintainer: << printf "%s <%s>" .Author .Email >>
+    description: << .Short >>
+    license: << .License >>
+    formats:
+      - deb
+      - rpm
+      - apk
+    bindir: /usr/bin
+    section: utils
+    contents:
+      - src: ./LICENSE
+        dst: /usr/share/doc/<< .Binary >>/LICENSE
+
+dockers_v2:
+  - images:
+      - << .Image >>
+    tags:
+      - "{{ .Version }}"
+      - latest
+    dockerfile: Dockerfile
+    platforms:
+      - linux/amd64
+      - linux/arm64
+    labels:
+      org.opencontainers.image.title: "{{ .ProjectName }}"
+      org.opencontainers.image.description: "<< .Short >>"
+      org.opencontainers.image.url: "<< .GitHubURL >>"
+      org.opencontainers.image.source: "<< .GitHubURL >>"
+      org.opencontainers.image.version: "{{ .Version }}"
+      org.opencontainers.image.revision: "{{ .FullCommit }}"
+      org.opencontainers.image.licenses: "<< .License >>"
+
+homebrew_casks:
+  - name: << .Binary >>
+    repository:
+      owner: << .Owner >>
+      name: homebrew-tap
+      token: '{{ envOrDefault "HOMEBREW_TAP_GITHUB_TOKEN" "" }}'
+    directory: Casks
+    homepage: << .GitHubURL >>
+    description: << .Short >>
+    skip_upload: '{{ if envOrDefault "HOMEBREW_TAP_GITHUB_TOKEN" "" }}false{{ else }}true{{ end }}'
+    commit_author:
+      name: << .Author >>
+      email: << .Email >>
+
+scoops:
+  - repository:
+      owner: << .Owner >>
+      name: scoop-bucket
+      token: '{{ envOrDefault "SCOOP_BUCKET_GITHUB_TOKEN" "" }}'
+    homepage: << .GitHubURL >>
+    description: << .Short >>
+    license: << .License >>
+    skip_upload: '{{ if envOrDefault "SCOOP_BUCKET_GITHUB_TOKEN" "" }}false{{ else }}true{{ end }}'
+    commit_author:
+      name: << .Author >>
+      email: << .Email >>
+
+checksum:
+  name_template: "checksums.txt"
+  algorithm: sha256
+
+sboms:
+  - id: archive
+    artifacts: archive
+
+signs:
+  - cmd: cosign
+    certificate: "${artifact}.pem"
+    args:
+      - sign-blob
+      - "--output-certificate=${certificate}"
+      - "--output-signature=${signature}"
+      - "${artifact}"
+      - "--yes"
+    artifacts: checksum
+    output: true
+
+docker_signs:
+  - cmd: cosign
+    artifacts: manifests
+    args:
+      - sign
+      - "${artifact}@${digest}"
+      - "--yes"
+
+changelog:
+  sort: asc
+  use: github
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+      - "^ci:"
+      - Merge pull request
+      - Merge branch
+  groups:
+    - title: Features
+      regexp: '^.*?feat(\(.+\))??!?:.+$'
+      order: 0
+    - title: Fixes
+      regexp: '^.*?fix(\(.+\))??!?:.+$'
+      order: 1
+    - title: Other
+      order: 999
+
+release:
+  github:
+    owner: << .Owner >>
+    name: << .Repo >>
+  draft: false
+  prerelease: auto
