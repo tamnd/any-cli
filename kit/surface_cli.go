@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"text/template"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -162,6 +163,14 @@ func (a *App) resolveConfig(g *globalFlags) Config {
 // record store if --db was given. It is built once per run in the root's
 // PersistentPreRunE and shared with every command through the context.
 func (a *App) newState(ctx context.Context, g *globalFlags) (*State, error) {
+	// Compile the template once here so a bad --template fails with a clean usage
+	// error before any command runs, and so building a renderer over any writer
+	// later (operations and escape-hatch commands alike) cannot fail.
+	if g.template != "" {
+		if _, err := template.New("row").Parse(g.template); err != nil {
+			return nil, errs.Usage("bad --template: %v", err)
+		}
+	}
 	st := &State{
 		Config:  a.resolveConfig(g),
 		Globals: Globals{Limit: g.limit},
