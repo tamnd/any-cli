@@ -102,7 +102,7 @@ func TestStoreTee(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open store: %v", err)
 	}
-	defer st.Close()
+	defer func() { _ = st.Close() }()
 
 	app := newTestApp()
 	op := app.byName["search"]
@@ -120,7 +120,7 @@ func TestStoreTee(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reopen: %v", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	var n int
 	if err := db.QueryRow(`SELECT count(*) FROM repo`).Scan(&n); err != nil {
 		t.Fatalf("count: %v", err)

@@ -37,7 +37,7 @@ func (a *App) serveCommand(g *globalFlags) *cobra.Command {
 			}
 			srv := a.httpServer(st, allowWrites)
 			httpd := &http.Server{Addr: addr, Handler: srv}
-			fmt.Fprintf(cmd.OutOrStdout(), "%s serving on %s\n", a.id.Binary, addr)
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "%s serving on %s\n", a.id.Binary, addr)
 			ctx := cmd.Context()
 			go func() {
 				<-ctx.Done()
@@ -120,7 +120,7 @@ func (a *App) handleHTTP(w http.ResponseWriter, r *http.Request, op Operation, s
 		writeErr(w, err)
 		return
 	}
-	sink.Flush()
+	_ = sink.Flush()
 }
 
 // ndjsonSink streams one JSON object per line. Once a record is written the
