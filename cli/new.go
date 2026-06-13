@@ -49,23 +49,23 @@ site-specific commands.
 			}
 
 			out := c.OutOrStdout()
-			fmt.Fprintf(out, "Scaffolding %s into %s\n", site.Module, destDir)
+			_, _ = fmt.Fprintf(out, "Scaffolding %s into %s\n", site.Module, destDir)
 
 			files, err := scaffold.Render(destDir, site)
 			if err != nil {
 				return fmt.Errorf("render: %w", err)
 			}
-			fmt.Fprintf(out, "Wrote %d files\n", len(files))
+			_, _ = fmt.Fprintf(out, "Wrote %d files\n", len(files))
 
 			if !noGit {
 				msg := fmt.Sprintf("Add %s, a command line for %s", site.Binary, site.Name)
 				if err := scaffold.InitGit(out, destDir, msg); err != nil {
-					fmt.Fprintf(out, "note: git init skipped (%v)\n", err)
+					_, _ = fmt.Fprintf(out, "note: git init skipped (%v)\n", err)
 				}
 			}
 			if !noTidy {
 				if err := scaffold.Tidy(out, destDir); err != nil {
-					fmt.Fprintf(out, "note: go mod tidy did not run (%v); run it before building\n", err)
+					_, _ = fmt.Fprintf(out, "note: go mod tidy did not run (%v); run it before building\n", err)
 				}
 			}
 			if remote {
@@ -108,5 +108,5 @@ func printNextSteps(out interface{ Write([]byte) (int, error) }, site scaffold.S
 	}
 	fmt.Fprintf(&b, "\nTo release, push a tag:\n")
 	fmt.Fprintf(&b, "  git tag v0.1.0 && git push --tags   # GoReleaser builds every artifact\n")
-	out.Write([]byte(b.String()))
+	_, _ = out.Write([]byte(b.String()))
 }

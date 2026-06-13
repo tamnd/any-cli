@@ -14,10 +14,10 @@ func newVersionCmd() *cobra.Command {
 		Short: "Print version information",
 		RunE: func(c *cobra.Command, _ []string) error {
 			if short {
-				fmt.Fprintln(c.OutOrStdout(), Version)
+				_, _ = fmt.Fprintln(c.OutOrStdout(), Version)
 				return nil
 			}
-			fmt.Fprintf(c.OutOrStdout(), "any %s (commit %s, built %s, %s/%s, %s)\n",
+			_, _ = fmt.Fprintf(c.OutOrStdout(), "any %s (commit %s, built %s, %s/%s, %s)\n",
 				Version, Commit, Date, runtime.GOOS, runtime.GOARCH, runtime.Version())
 			return nil
 		},

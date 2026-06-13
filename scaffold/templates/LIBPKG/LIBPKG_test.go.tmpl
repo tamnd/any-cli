@@ -13,7 +13,7 @@ func TestGet(t *testing.T) {
 		if r.Header.Get("User-Agent") == "" {
 			t.Error("request carried no User-Agent")
 		}
-		w.Write([]byte("ok"))
+		_, _ = w.Write([]byte("ok"))
 	}))
 	defer srv.Close()
 
@@ -37,7 +37,7 @@ func TestGetRetriesOn503(t *testing.T) {
 			w.WriteHeader(http.StatusServiceUnavailable)
 			return
 		}
-		w.Write([]byte("recovered"))
+		_, _ = w.Write([]byte("recovered"))
 	}))
 	defer srv.Close()
 

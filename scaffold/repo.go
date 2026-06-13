@@ -41,7 +41,7 @@ func InitGit(w io.Writer, destDir, message string) error {
 	}
 	if err := run(w, destDir, "git", "submodule", "add", "-q",
 		ThemeSubmodule, "docs/themes/tago-doks"); err != nil {
-		fmt.Fprintf(w, "note: docs theme submodule not added (%v); add it later with:\n"+
+		_, _ = fmt.Fprintf(w, "note: docs theme submodule not added (%v); add it later with:\n"+
 			"  git submodule add %s docs/themes/tago-doks\n", err, ThemeSubmodule)
 	}
 	if err := run(w, destDir, "git", "add", "-A"); err != nil {
