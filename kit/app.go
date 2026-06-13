@@ -5,8 +5,6 @@ import (
 	"slices"
 	"sort"
 
-	"github.com/spf13/cobra"
-	"github.com/spf13/pflag"
 	"github.com/tamnd/any-cli/kit/store"
 )
 
@@ -33,12 +31,12 @@ type App struct {
 	byName     map[string]Operation
 	groups     []string
 	newCli     func(context.Context, Config) (any, error)
-	extra      []*cobra.Command
+	extra      []Command
 	nested     []nestedCmd
 	parents    map[string]string // parent command name -> its help summary
 	openDB     func(context.Context, string) (store.Store, error)
 	cfgHook    func(*Config)
-	globalHook func(*pflag.FlagSet)
+	globalHook func(*FlagSet)
 	finalize   func(*Config)
 }
 
@@ -47,7 +45,7 @@ type App struct {
 // command (for ccrawl: "crawls list" is an op, "crawls info" is an escape hatch).
 type nestedCmd struct {
 	parent string
-	cmd    *cobra.Command
+	cmd    Command
 }
 
 // Option customizes an App at construction.
@@ -95,7 +93,7 @@ func (a *App) SetClient(fn func(context.Context, Config) (any, error)) {
 // settings that are not part of the framework baseline (for ccrawl: --crawl,
 // --source, --library). The domain binds them to its own variables and reads
 // those when building its client and its escape-hatch commands.
-func (a *App) GlobalFlags(fn func(*pflag.FlagSet)) {
+func (a *App) GlobalFlags(fn func(*FlagSet)) {
 	a.globalHook = fn
 }
 
@@ -110,7 +108,7 @@ func (a *App) Finalize(fn func(*Config)) {
 // emit-records shape (an interactive shell, a DuckDB analytical console, a
 // binary download). The command joins the CLI tree as-is. It is absent from the
 // API and MCP surfaces, which expose only registered operations.
-func (a *App) AddCommand(cmd *cobra.Command) {
+func (a *App) AddCommand(cmd Command) {
 	a.extra = append(a.extra, cmd)
 }
 
@@ -118,7 +116,7 @@ func (a *App) AddCommand(cmd *cobra.Command) {
 // the same parent a nested operation declares with OpMeta.Parent. It lets a
 // domain mix generated operations and hand-rolled commands under one group, so
 // "crawls list" (an op) and "crawls info" (an escape hatch) sit side by side.
-func (a *App) AddCommandUnder(parent string, cmd *cobra.Command) {
+func (a *App) AddCommandUnder(parent string, cmd Command) {
 	a.nested = append(a.nested, nestedCmd{parent: parent, cmd: cmd})
 }
 

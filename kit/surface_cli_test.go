@@ -8,8 +8,6 @@ import (
 	"os"
 	"strings"
 	"testing"
-
-	"github.com/spf13/cobra"
 )
 
 // captureStdout runs fn with os.Stdout redirected to a pipe and returns what was
@@ -69,10 +67,10 @@ func TestCLINestedOp(t *testing.T) {
 	}, emit func(repo) error) error {
 		return emit(repo{ID: in.Host, Owner: in.Host, Stars: 7})
 	})
-	app.AddCommandUnder("rank", &cobra.Command{
+	app.AddCommandUnder("rank", Command{
 		Use:   "info",
 		Short: "an escape-hatch sibling",
-		RunE:  func(cmd *cobra.Command, _ []string) error { return nil },
+		Run:   func(context.Context, []string) error { return nil },
 	})
 
 	root := app.buildCLI()

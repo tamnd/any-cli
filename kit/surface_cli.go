@@ -64,7 +64,7 @@ func (a *App) buildCLI() *cobra.Command {
 	}
 	bindGlobals(root, g)
 	if a.globalHook != nil {
-		a.globalHook(root.PersistentFlags())
+		a.globalHook(&FlagSet{fs: root.PersistentFlags()})
 	}
 
 	groups := map[string]*cobra.Group{}
@@ -101,10 +101,10 @@ func (a *App) buildCLI() *cobra.Command {
 		}
 	}
 	for _, n := range a.nested {
-		parentOf(n.parent).AddCommand(n.cmd)
+		parentOf(n.parent).AddCommand(n.cmd.cobraCommand())
 	}
 	for _, c := range a.extra {
-		root.AddCommand(c)
+		root.AddCommand(c.cobraCommand())
 	}
 	root.AddCommand(a.serveCommand(g))
 	root.AddCommand(a.mcpCommand())
