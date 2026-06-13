@@ -1,0 +1,45 @@
+---
+title: "Installation"
+description: "Install << .Binary >> from a release, with go install, or from source."
+weight: 20
+---
+
+## Prebuilt binaries
+
+Every [release](<< .GitHubURL >>/releases) carries archives for Linux, macOS,
+and Windows on amd64 and arm64, plus deb, rpm, and apk packages for Linux.
+Download, unpack, put `<< .Binary >>` on your `PATH`, done. The `checksums.txt`
+on each release is signed with keyless [cosign](https://docs.sigstore.dev/) if
+you want to verify before running.
+
+## With Go
+
+```bash
+go install << .Module >>/cmd/<< .Binary >>@latest
+```
+
+That puts `<< .Binary >>` in `$(go env GOPATH)/bin`, which is `~/go/bin` unless
+you moved it. Make sure that directory is on your `PATH`.
+
+## From source
+
+```bash
+git clone << .GitHubURL >>
+cd << .Repo >>
+make build        # produces ./bin/<< .Binary >>
+./bin/<< .Binary >> version
+```
+
+## Container image
+
+```bash
+docker run --rm << .Image >>:latest --help
+```
+
+## Checking the install
+
+```bash
+<< .Binary >> version
+```
+
+prints the version and exits.
