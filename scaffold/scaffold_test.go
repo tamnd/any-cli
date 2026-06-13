@@ -72,6 +72,8 @@ func TestRenderWritesBuildableTree(t *testing.T) {
 		"reddit/reddit.go",
 		"reddit/reddit_test.go",
 		"docs/tago.toml",
+		"docs/content/reference/output.md",
+		"docs/content/reference/troubleshooting.md",
 	} {
 		if _, err := os.Stat(filepath.Join(dest, want)); err != nil {
 			t.Errorf("missing %s: %v", want, err)
