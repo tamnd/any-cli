@@ -54,7 +54,7 @@ cli/                 cobra command tree with version
 docs/                tago site, deploys to GitHub Pages and Cloudflare
 .github/workflows/   ci (build/test/lint/vuln/tidy), release, docs
 .goreleaser.yaml     archives, deb/rpm/apk, GHCR image, cosign, SBOMs, taps
-Dockerfile Makefile .golangci.yml LICENSE CLAUDE.md
+Dockerfile Makefile .golangci.yml LICENSE
 ```
 
 Then you write the site-specific commands in `cli/` on top of the library, and
