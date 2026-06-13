@@ -29,7 +29,7 @@ any new <site> --remote        # also creates and pushes the GitHub repo
 This writes `<site>-cli`: the `cmd/<bin>` entry point, the `cli/` cobra tree, a
 `<site>/` library with a paced retrying HTTP client, `.goreleaser.yaml`, the
 ci/release/docs workflows, a tago docs site, `.golangci.yml`, Dockerfile,
-Makefile, LICENSE, and CLAUDE.md. It initialises git, adds the docs theme
+Makefile, and LICENSE. It initialises git, adds the docs theme
 submodule, and runs `go mod tidy`. The result builds and releases as-is.
 
 Useful flags: `--owner`, `--binary`, `--license` (default Apache-2.0; use
