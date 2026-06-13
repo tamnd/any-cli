@@ -44,6 +44,32 @@ const (
 	Template Format = "template"
 )
 
+// Record is a row a command has already projected: an explicit ordered column
+// set (Cols/Vals) for the table, csv, tsv, and url formats, plus the original
+// Value rendered by json, jsonl, raw, and template. A command emits a Record when
+// its table columns differ from its JSON shape, or when the row comes from a
+// dynamic map that struct reflection cannot plan. Emit handles it like any
+// record; when Value is nil it falls back to a map of the columns.
+type Record struct {
+	Cols  []string
+	Vals  []string
+	Value any
+}
+
+// value returns what the json-family formats marshal for this record.
+func (rec Record) value() any {
+	if rec.Value != nil {
+		return rec.Value
+	}
+	m := make(map[string]any, len(rec.Cols))
+	for i, c := range rec.Cols {
+		if i < len(rec.Vals) {
+			m[c] = rec.Vals[i]
+		}
+	}
+	return m
+}
+
 // Options configure a Renderer.
 type Options struct {
 	Format   Format    // the encoding; Auto resolves to Table on a TTY else JSONL
@@ -96,7 +122,8 @@ func New(o Options) (*Renderer, error) {
 // Format returns the resolved format.
 func (r *Renderer) Format() Format { return r.o.Format }
 
-// Emit renders one record.
+// Emit renders one record. A record is either a struct (rendered by reflection
+// and its `table:`/`json:` tags) or a Record with explicit columns.
 func (r *Renderer) Emit(rec any) error {
 	switch r.o.Format {
 	case Table:
@@ -104,18 +131,32 @@ func (r *Renderer) Emit(rec any) error {
 	case CSV, TSV:
 		return r.emitDelim(rec)
 	case JSONL:
-		return r.emitJSONL(rec)
+		return r.emitJSONL(jsonValue(rec))
 	case JSON:
-		return r.emitJSON(rec)
+		return r.emitJSON(jsonValue(rec))
 	case URL:
 		return r.emitURL(rec)
 	case Raw:
-		return r.emitRaw(rec)
+		return r.emitRaw(jsonValue(rec))
 	case Template:
-		return r.tmpl.Execute(r.w, templateData(rec))
+		return r.tmpl.Execute(r.w, templateData(jsonValue(rec)))
 	default:
-		return r.emitJSONL(rec)
+		return r.emitJSONL(jsonValue(rec))
 	}
+}
+
+// Write sends raw bytes straight to the underlying writer, bypassing all
+// formatting, so a Renderer doubles as the io.Writer for a command that emits an
+// opaque blob (a page body, extracted text) alongside any structured rows.
+func (r *Renderer) Write(b []byte) (int, error) { return r.w.Write(b) }
+
+// jsonValue is what the json-family formats marshal: a Record's Value, or the
+// record itself.
+func jsonValue(rec any) any {
+	if rd, ok := rec.(Record); ok {
+		return rd.value()
+	}
+	return rec
 }
 
 // Flush finalizes buffered formats. Call once at the end of a run.
@@ -138,6 +179,9 @@ func (r *Renderer) Flush() error {
 }
 
 func (r *Renderer) columns(rec any) (cols, vals []string) {
+	if rd, ok := rec.(Record); ok {
+		return r.project(rd.Cols, rd.Vals)
+	}
 	plan := planFor(reflect.TypeOf(rec))
 	rv := reflect.ValueOf(rec)
 	for rv.Kind() == reflect.Pointer {
@@ -243,6 +287,15 @@ func (r *Renderer) emitJSON(rec any) error {
 }
 
 func (r *Renderer) emitURL(rec any) error {
+	if rd, ok := rec.(Record); ok {
+		for i, c := range rd.Cols {
+			if c == "url" && i < len(rd.Vals) && rd.Vals[i] != "" {
+				_, err := fmt.Fprintln(r.w, rd.Vals[i])
+				return err
+			}
+		}
+		return nil
+	}
 	plan := planFor(reflect.TypeOf(rec))
 	rv := reflect.ValueOf(rec)
 	for rv.Kind() == reflect.Pointer && !rv.IsNil() {
