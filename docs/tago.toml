@@ -1,0 +1,10 @@
+title       = "any"
+baseURL     = "https://any-cli.tamnd.com/"
+description = "Scaffold a new tamnd/*-cli repository, fully wired: command tree, library, GoReleaser, GitHub Actions, and a docs site in one command."
+contentDir  = "content"
+outputDir   = "public"
+theme       = "tago-doks"
+syntaxHighlight = "true"
+
+[params]
+github = "https://github.com/tamnd/any-cli"
