@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"strings"
 	"testing"
+
+	"charm.land/lipgloss/v2"
 )
 
 func renderRecords(t *testing.T, o Options, recs ...Record) string {
@@ -185,5 +187,28 @@ func TestEmptyGridEmitsNothing(t *testing.T) {
 	}
 	if buf.Len() != 0 {
 		t.Errorf("empty table wrote %q", buf.String())
+	}
+}
+
+func TestTableShrinksToWidth(t *testing.T) {
+	wide := strings.Repeat("x", 80)
+	out := renderRecords(t, Options{Format: Table, Width: 40},
+		Record{Cols: []string{"a", "b"}, Vals: []string{wide, "1"}},
+	)
+	for _, line := range strings.Split(strings.TrimRight(out, "\n"), "\n") {
+		if w := lipgloss.Width(line); w > 40 {
+			t.Errorf("line exceeds width 40 (%d): %q", w, line)
+		}
+	}
+}
+
+func TestNarrowTableNotStretched(t *testing.T) {
+	out := renderRecords(t, Options{Format: Table, Width: 120},
+		Record{Cols: []string{"a", "b"}, Vals: []string{"x", "1"}},
+	)
+	for _, line := range strings.Split(strings.TrimRight(out, "\n"), "\n") {
+		if w := lipgloss.Width(line); w > 20 {
+			t.Errorf("narrow table got stretched to %d: %q", w, line)
+		}
 	}
 }
