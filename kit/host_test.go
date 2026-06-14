@@ -20,6 +20,11 @@ type maker struct {
 	Name string `json:"name"`
 }
 
+type part struct {
+	ID       string `json:"id" kit:"id"`
+	WidgetID string `json:"widget_id"`
+}
+
 type idArg struct {
 	ID string `kit:"arg"`
 }
@@ -46,6 +51,12 @@ func (demoDomain) Register(app *App) {
 	Handle(app, OpMeta{Name: "maker", URIType: "maker", Single: true},
 		func(_ context.Context, in idArg, emit func(maker) error) error {
 			return emit(maker{ID: in.ID, Name: "Maker " + in.ID})
+		})
+	// A list op enumerates a widget's parts: its authority is the parent
+	// ("widget"), but it emits a child type that must not seed the mint index.
+	Handle(app, OpMeta{Name: "parts", URIType: "widget", List: true},
+		func(_ context.Context, in idArg, emit func(part) error) error {
+			return emit(part{ID: "p1", WidgetID: in.ID})
 		})
 }
 
@@ -135,6 +146,32 @@ func TestHostGetMintLinks(t *testing.T) {
 	links := h.Links(w)
 	if len(links) != 1 || links[0].String() != "demo://maker/m1" {
 		t.Errorf("Links = %v, want [demo://maker/m1]", links)
+	}
+}
+
+func TestHostListAndMintGating(t *testing.T) {
+	registerDemo(t)
+	h, _ := Open()
+	u, _ := ParseURI("demo://widget/42")
+
+	parts, err := h.List(context.Background(), u, 0)
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if len(parts) != 1 {
+		t.Fatalf("List returned %d parts, want 1", len(parts))
+	}
+	p, ok := parts[0].(part)
+	if !ok || p.WidgetID != "42" {
+		t.Errorf("List part = %+v", parts[0])
+	}
+
+	// The widget resolver mints; the part type, only ever a list child, does not.
+	if _, err := h.Mint(widget{ID: "42"}); err != nil {
+		t.Errorf("Mint(widget) = %v, want nil", err)
+	}
+	if _, err := h.Mint(part{ID: "p1"}); err == nil {
+		t.Error("Mint(part) = nil error, want unmintable")
 	}
 }
 
