@@ -113,7 +113,7 @@ func (a *App) buildCLI() *cobra.Command {
 
 func bindGlobals(root *cobra.Command, g *globalFlags) {
 	f := root.PersistentFlags()
-	f.StringVarP(&g.output, "output", "o", "auto", "output format: auto|table|json|jsonl|csv|tsv|url|raw")
+	f.StringVarP(&g.output, "output", "o", "auto", "output format: auto|table|markdown|json|jsonl|csv|tsv|url|raw")
 	f.StringVar(&g.fields, "fields", "", "comma-separated columns to show")
 	f.StringVar(&g.template, "template", "", "Go template applied per record")
 	f.BoolVar(&g.noHeader, "no-header", false, "omit the header row")
@@ -180,6 +180,7 @@ func (a *App) newState(ctx context.Context, g *globalFlags) (*State, error) {
 			NoHeader: g.noHeader,
 			Template: g.template,
 			IsTTY:    isTTY(os.Stdout),
+			Color:    colorEnabled(g.color, isTTY(os.Stdout)),
 			Width:    termWidth(),
 		},
 		newClient: a.newCli,
@@ -299,6 +300,22 @@ func argsValidator(op Operation) cobra.PositionalArgs {
 
 func exitCodeFor(err error) int {
 	return errs.ExitCode(err)
+}
+
+// colorEnabled resolves the --color flag against the terminal and the NO_COLOR
+// convention. auto colors only an interactive terminal; always forces color on
+// (e.g. piping into a pager that interprets ANSI); never disables it. This is
+// what keeps `cmd | jq` and other scripted pipes plain: a pipe is not a TTY, so
+// auto resolves to no color.
+func colorEnabled(mode string, tty bool) bool {
+	switch mode {
+	case "always":
+		return true
+	case "never":
+		return false
+	default:
+		return tty && os.Getenv("NO_COLOR") == ""
+	}
 }
 
 func isTTY(f *os.File) bool {
