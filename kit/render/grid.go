@@ -17,18 +17,28 @@ func (r *Renderer) flushGrid() error {
 	}
 	md := r.o.Format == Markdown
 
-	t := table.New().Rows(r.gridRows...)
-	if !r.o.NoHeader {
-		head := r.gridHead
-		if !md {
-			head = upper(head)
+	head := r.gridHead
+	rows := r.gridRows
+	if md {
+		// A literal pipe or newline in a cell would break the column boundaries
+		// of a GitHub pipe table, so escape them before lipgloss lays it out.
+		head = escapeMarkdownRow(head)
+		rows = make([][]string, len(r.gridRows))
+		for i, row := range r.gridRows {
+			rows[i] = escapeMarkdownRow(row)
 		}
+	} else {
+		head = upper(head)
+	}
+
+	t := table.New().Rows(rows...)
+	if !r.o.NoHeader {
 		t = t.Headers(head...)
 	}
 
 	if md {
-		// A GitHub-flavored pipe table: no outer top/bottom rule, never colored,
-		// keeps full-width content so it pastes cleanly into docs and issues.
+		// No outer top/bottom rule, never colored, full-width content so the
+		// table pastes cleanly into docs, issues, and READMEs.
 		t = t.Border(lipgloss.MarkdownBorder()).
 			BorderTop(false).
 			BorderBottom(false).
@@ -57,6 +67,19 @@ var padded = lipgloss.NewStyle().Padding(0, 1)
 // markdownStyle keeps every cell plain and left-aligned so the rendered pipes
 // stay valid markdown.
 func markdownStyle(int, int) lipgloss.Style { return padded.Align(lipgloss.Left) }
+
+// escapeMarkdownRow makes a row's cells safe inside a GitHub pipe table: a
+// literal pipe becomes \|, and any newline collapses to a space so the cell
+// stays on one table line.
+func escapeMarkdownRow(cells []string) []string {
+	out := make([]string, len(cells))
+	for i, c := range cells {
+		c = strings.ReplaceAll(c, "\n", " ")
+		c = strings.ReplaceAll(c, "|", "\\|")
+		out[i] = c
+	}
+	return out
+}
 
 // borderStyle dims the grid lines when color is on, else leaves them plain.
 func (r *Renderer) borderStyle() lipgloss.Style {
