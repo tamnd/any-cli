@@ -8,6 +8,7 @@ import (
 	"text/template"
 	"time"
 
+	"github.com/charmbracelet/x/term"
 	"github.com/spf13/cobra"
 	"github.com/tamnd/any-cli/kit/errs"
 	"github.com/tamnd/any-cli/kit/render"
@@ -326,12 +327,19 @@ func isTTY(f *os.File) bool {
 	return fi.Mode()&os.ModeCharDevice != 0
 }
 
+// termWidth reports the terminal width in columns, or 0 when stdout is not a
+// terminal (a pipe or file). The renderer uses it to shrink a too-wide table to
+// fit; a 0 leaves output at its natural width, which is what a pipe wants.
+// COLUMNS wins when set so the width is scriptable and testable.
 func termWidth() int {
 	if v := os.Getenv("COLUMNS"); v != "" {
 		var n int
 		if _, err := fmt.Sscanf(v, "%d", &n); err == nil && n > 0 {
 			return n
 		}
+	}
+	if w, _, err := term.GetSize(os.Stdout.Fd()); err == nil && w > 0 {
+		return w
 	}
 	return 0
 }

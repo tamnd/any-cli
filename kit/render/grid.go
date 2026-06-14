@@ -28,18 +28,26 @@ func (r *Renderer) flushGrid() error {
 
 	if md {
 		// A GitHub-flavored pipe table: no outer top/bottom rule, never colored,
-		// so it pastes cleanly into docs, issues, and READMEs.
+		// keeps full-width content so it pastes cleanly into docs and issues.
 		t = t.Border(lipgloss.MarkdownBorder()).
 			BorderTop(false).
 			BorderBottom(false).
 			StyleFunc(markdownStyle)
-	} else {
-		t = t.Border(lipgloss.RoundedBorder()).
-			BorderStyle(r.borderStyle()).
-			StyleFunc(r.tableStyle())
+		_, err := io.WriteString(r.w, t.String()+"\n")
+		return err
 	}
 
-	_, err := io.WriteString(r.w, t.String()+"\n")
+	t = t.Border(lipgloss.RoundedBorder()).
+		BorderStyle(r.borderStyle()).
+		StyleFunc(r.tableStyle())
+	out := t.String()
+	// Shrink a too-wide table to the terminal so it never wraps at the edge;
+	// lipgloss redistributes the slack to the widest columns. Only ever shrink:
+	// constraining a table that already fits would stretch it to fill the width.
+	if r.o.Width > 0 && lipgloss.Width(out) > r.o.Width {
+		out = t.Width(r.o.Width).String()
+	}
+	_, err := io.WriteString(r.w, out+"\n")
 	return err
 }
 
