@@ -363,7 +363,7 @@ func (m *mount) clientFor(ctx context.Context) (any, error) {
 type collector struct{ recs []any }
 
 func (c *collector) Emit(rec any) error { c.recs = append(c.recs, rec); return nil }
-func (c *collector) Flush() error        { return nil }
+func (c *collector) Flush() error       { return nil }
 
 // urlHost extracts the lower-cased host of an http(s) URL, or "" when input is
 // not an absolute URL. It is how a pasted link is matched to the domain that
