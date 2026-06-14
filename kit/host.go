@@ -129,6 +129,9 @@ func (h *Host) index(scheme string, m *mount) {
 		}
 		switch {
 		case meta.List:
+			// A list op's authority is the parent resource it enumerates, not the
+			// type it emits (a series lists SeriesBook rows), so it never seeds the
+			// mint index; only a resolver op names its own record type.
 			if _, ok := m.lists[authority]; !ok {
 				m.lists[authority] = op
 			}
@@ -141,9 +144,9 @@ func (h *Host) index(scheme string, m *mount) {
 					m.picked[authority] = true
 				}
 			}
-		}
-		if _, ok := h.mint[t]; !ok {
-			h.mint[t] = tpl{scheme: scheme, authority: authority, idIdx: idFieldIndex(t)}
+			if _, ok := h.mint[t]; !ok {
+				h.mint[t] = tpl{scheme: scheme, authority: authority, idIdx: idFieldIndex(t)}
+			}
 		}
 	}
 }
