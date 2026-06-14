@@ -29,6 +29,10 @@ type idArg struct {
 	ID string `kit:"arg"`
 }
 
+type queryArg struct {
+	Query []string `kit:"arg,variadic"`
+}
+
 type demoDomain struct{}
 
 func (demoDomain) Info() DomainInfo {
@@ -57,6 +61,13 @@ func (demoDomain) Register(app *App) {
 	Handle(app, OpMeta{Name: "parts", URIType: "widget", List: true},
 		func(_ context.Context, in idArg, emit func(part) error) error {
 			return emit(part{ID: "p1", WidgetID: in.ID})
+		})
+	// A free-text search op: not URI-addressable (its URIType reuses "widget"),
+	// but a host can still drive it via Host.Search.
+	Handle(app, OpMeta{Name: "search", URIType: "widget",
+		Args: []Arg{{Name: "query", Variadic: true}}},
+		func(_ context.Context, in queryArg, emit func(widget) error) error {
+			return emit(widget{ID: "q", Name: "Hit for " + strings.Join(in.Query, " ")})
 		})
 }
 
@@ -220,5 +231,36 @@ func TestHostWrapEnvelope(t *testing.T) {
 	}
 	if got := env.Links["maker_id"]; len(got) != 1 || got[0] != "demo://maker/m1" {
 		t.Errorf("envelope links = %v", env.Links)
+	}
+}
+
+func TestHostSearch(t *testing.T) {
+	registerDemo(t)
+	h, _ := Open()
+
+	if !h.Searchable("demo") {
+		t.Fatal("Searchable(demo) = false, want true")
+	}
+	if h.Searchable("nope") {
+		t.Error("Searchable(nope) = true, want false")
+	}
+
+	recs, err := h.Search(context.Background(), "demo", "shiny gears", 0)
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if len(recs) != 1 {
+		t.Fatalf("Search returned %d records, want 1", len(recs))
+	}
+	w, ok := recs[0].(widget)
+	if !ok {
+		t.Fatalf("Search record is %T, want widget", recs[0])
+	}
+	if w.Name != "Hit for shiny gears" {
+		t.Errorf("Search hit name = %q", w.Name)
+	}
+
+	if _, err := h.Search(context.Background(), "nope", "x", 0); err == nil {
+		t.Error("Search(unknown domain) = nil error, want usage error")
 	}
 }
