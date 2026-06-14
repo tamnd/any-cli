@@ -66,6 +66,14 @@ func (Domain) Register(app *kit.App) {
 	kit.Handle(app, kit.OpMeta{Name: "links", Group: "read", List: true,
 		Summary: "List the pages a page links to", URIType: "page",
 		Args: []kit.Arg{{Name: "ref", Help: "page path or URL"}}}, listLinks)
+
+	// Search op: a free-text query, the home of `<< .Binary >> search` and the
+	// search box a host (ant) shows for this domain. A top-level op named "search"
+	// is exactly what kit.Host.Searchable looks for. Like links it emits page
+	// stubs, so a host can follow any hit to its own << .Scheme >>://page/ URI.
+	kit.Handle(app, kit.OpMeta{Name: "search", Group: "read",
+		Summary: "Search << .Name >>",
+		Args:    []kit.Arg{{Name: "query", Help: "search query"}}}, searchPages)
 }
 
 // newClient builds the client from the host-resolved config, so a host and the
@@ -105,6 +113,12 @@ type listRef struct {
 	Client *Client `kit:"inject"`
 }
 
+type searchRef struct {
+	Query  string  `kit:"arg" help:"search query"`
+	Limit  int     `kit:"flag,inherit" help:"max results"`
+	Client *Client `kit:"inject"`
+}
+
 // --- handlers ---
 
 func getPage(ctx context.Context, in pageRef, emit func(*Page) error) error {
@@ -117,6 +131,19 @@ func getPage(ctx context.Context, in pageRef, emit func(*Page) error) error {
 
 func listLinks(ctx context.Context, in listRef, emit func(*Page) error) error {
 	pages, err := in.Client.PageLinks(ctx, pagePath(in.Ref), in.Limit)
+	if err != nil {
+		return mapErr(err)
+	}
+	for _, p := range pages {
+		if err := emit(p); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func searchPages(ctx context.Context, in searchRef, emit func(*Page) error) error {
+	pages, err := in.Client.Search(ctx, in.Query, in.Limit)
 	if err != nil {
 		return mapErr(err)
 	}

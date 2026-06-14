@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"regexp"
 	"strings"
 	"time"
@@ -54,7 +55,7 @@ func NewClient() *Client {
 // Get fetches url and returns the response body. It paces and retries according
 // to the client's settings. The caller owns nothing extra; the body is read
 // fully and closed here.
-func (c *Client) Get(ctx context.Context, url string) ([]byte, error) {
+func (c *Client) Get(ctx context.Context, rawURL string) ([]byte, error) {
 	var lastErr error
 	for attempt := 0; attempt <= c.Retries; attempt++ {
 		if attempt > 0 {
@@ -64,7 +65,7 @@ func (c *Client) Get(ctx context.Context, url string) ([]byte, error) {
 			case <-time.After(backoff(attempt)):
 			}
 		}
-		body, retry, err := c.do(ctx, url)
+		body, retry, err := c.do(ctx, rawURL)
 		if err == nil {
 			return body, nil
 		}
@@ -73,12 +74,12 @@ func (c *Client) Get(ctx context.Context, url string) ([]byte, error) {
 			return nil, err
 		}
 	}
-	return nil, fmt.Errorf("get %s: %w", url, lastErr)
+	return nil, fmt.Errorf("get %s: %w", rawURL, lastErr)
 }
 
-func (c *Client) do(ctx context.Context, url string) (body []byte, retry bool, err error) {
+func (c *Client) do(ctx context.Context, rawURL string) (body []byte, retry bool, err error) {
 	c.pace()
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 	if err != nil {
 		return nil, false, err
 	}
@@ -125,14 +126,20 @@ func backoff(attempt int) time.Duration {
 
 // Page is the scaffold's one example record: a single page, addressed by the
 // path that names it on << .Host >>. It is a stand-in for the typed records you
-// will model from the real << .Name >> endpoints. The kit struct tags make it
-// addressable as a resource URI (see domain.go): ID is the URI id, and Body is
-// the long text `<< .Binary >> cat` and the Markdown export print.
+// will model from the real << .Name >> endpoints.
+//
+// The kit struct tags make it addressable as a resource URI (see domain.go): ID
+// is the URI id, and Body is the long text `<< .Binary >> cat` and the Markdown
+// export print. The table tags shape the terminal grid (`-o table`) without
+// touching the JSON: URL is flagged the canonical column the `url` format prints,
+// and Body is hidden from the grid with `table:"-"` because a long preview wrecks
+// a row, though it still rides in `-o json` and `<< .Binary >> cat`. Swap `-` for
+// `table:"body,truncate"` if you would rather clip it to the terminal width.
 type Page struct {
-	ID    string `json:"id" kit:"id"`
-	URL   string `json:"url"`
-	Title string `json:"title,omitempty"`
-	Body  string `json:"body,omitempty" kit:"body"`
+	ID    string `json:"id" kit:"id" table:"id"`
+	URL   string `json:"url" table:"url,url"`
+	Title string `json:"title,omitempty" table:"title"`
+	Body  string `json:"body,omitempty" kit:"body" table:"-"`
 }
 
 // GetPage fetches one page by its path (for example "wiki/Go") and returns it as
@@ -154,6 +161,32 @@ func (c *Client) GetPage(ctx context.Context, path string) (*Page, error) {
 func (c *Client) PageLinks(ctx context.Context, path string, limit int) ([]*Page, error) {
 	path = strings.Trim(path, "/")
 	body, err := c.Get(ctx, BaseURL+"/"+path)
+	if err != nil {
+		return nil, err
+	}
+	var out []*Page
+	seen := map[string]bool{}
+	for _, p := range linkPaths(body) {
+		if seen[p] {
+			continue
+		}
+		seen[p] = true
+		out = append(out, &Page{ID: p, URL: BaseURL + "/" + p})
+		if limit > 0 && len(out) >= limit {
+			break
+		}
+	}
+	return out, nil
+}
+
+// Search fetches the site's search results for query and returns the matching
+// pages as stubs, the same shape PageLinks emits, so every hit is an addressable
+// << .Host >> page URI a host can follow. Like the rest of the scaffold it is a
+// stand-in: it reads the links out of a results page rather than a real search
+// API. Point it at the real endpoint and parse the real result shape once you
+// know it.
+func (c *Client) Search(ctx context.Context, query string, limit int) ([]*Page, error) {
+	body, err := c.Get(ctx, BaseURL+"/search?q="+url.QueryEscape(query))
 	if err != nil {
 		return nil, err
 	}

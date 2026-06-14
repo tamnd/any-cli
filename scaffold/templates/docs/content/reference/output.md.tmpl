@@ -14,6 +14,7 @@ a table when writing to a terminal, JSONL when piped.
 ```bash
 << .Binary >> <command> -o table     # a rounded, color-aware grid for reading
 << .Binary >> <command> -o markdown  # a GitHub pipe table to paste into docs (alias: md)
+<< .Binary >> <command> -o list      # one record per section, easy on the eyes
 << .Binary >> <command> -o jsonl     # one JSON object per line, for piping
 << .Binary >> <command> -o json      # a single JSON array
 << .Binary >> <command> -o csv       # spreadsheet friendly
@@ -26,6 +27,7 @@ a table when writing to a terminal, JSONL when piped.
 |---|---|
 | `table` | Reading on a terminal: a rounded border with an accented header |
 | `markdown` | Pasting into a README, issue, or PR (alias `md`) |
+| `list` | Reading one record at a time: a heading and a short bullet list per record |
 | `jsonl` | Piping into another tool, one object at a time |
 | `json` | Loading a whole result as an array |
 | `csv` / `tsv` | Spreadsheets and quick column math |
@@ -34,12 +36,14 @@ a table when writing to a terminal, JSONL when piped.
 
 ## Color
 
-On an interactive terminal the `table` and `json`/`jsonl` formats are colored:
-the table draws a dim border with an accented header, and JSON keys, strings,
-numbers, and literals are highlighted. Color is suppressed the moment output is
-not a terminal, so a pipe always gets plain, parseable bytes. Force the choice
-with `--color always|never` (or set `NO_COLOR`). `markdown`, `csv`, `tsv`,
-`url`, and `raw` are never colored, so they stay safe to redirect into a file.
+On an interactive terminal the `table`, `list`, and `json`/`jsonl` formats are
+colored: the table draws a dim border with an accented header, `list` styles each
+record's heading and keys, and JSON keys, strings, numbers, and literals are
+highlighted. Color is suppressed the moment output is not a terminal, so a pipe
+always gets plain, parseable bytes (and `list` falls back to literal Markdown).
+Force the choice with `--color always|never` (or set `NO_COLOR`). `markdown`,
+`csv`, `tsv`, `url`, and `raw` are never colored, so they stay safe to redirect
+into a file.
 
 ## Narrowing columns
 
