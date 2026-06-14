@@ -52,6 +52,62 @@ func TestRecordFieldsProjection(t *testing.T) {
 	}
 }
 
+func TestListSectionsMarkdown(t *testing.T) {
+	// Color off: a heading from the first column, then literal markdown bullets,
+	// with a blank line between records so it streams as valid GFM.
+	out := renderRecords(t, Options{Format: List},
+		Record{Cols: []string{"username", "name", "followers"}, Vals: []string{"karpathy", "Andrej", "2991308"}},
+		Record{Cols: []string{"username", "name", "followers"}, Vals: []string{"nasa", "NASA", "92099694"}},
+	)
+	want := "## karpathy\n" +
+		"- **name**: Andrej\n" +
+		"- **followers**: 2991308\n" +
+		"\n" +
+		"## nasa\n" +
+		"- **name**: NASA\n" +
+		"- **followers**: 92099694\n"
+	if out != want {
+		t.Errorf("list = %q, want %q", out, want)
+	}
+}
+
+func TestListSectionsAlias(t *testing.T) {
+	out := renderRecords(t, Options{Format: "sections"},
+		Record{Cols: []string{"id", "text"}, Vals: []string{"20", "hi"}},
+	)
+	if !strings.HasPrefix(out, "## 20\n- **text**: hi\n") {
+		t.Errorf("sections alias did not resolve to list: %q", out)
+	}
+}
+
+func TestListNoHeaderDropsHeading(t *testing.T) {
+	// --no-header turns the first column back into a bullet instead of a heading.
+	out := renderRecords(t, Options{Format: List, NoHeader: true},
+		Record{Cols: []string{"username", "name"}, Vals: []string{"karpathy", "Andrej"}},
+	)
+	want := "- **username**: karpathy\n- **name**: Andrej\n"
+	if out != want {
+		t.Errorf("list --no-header = %q, want %q", out, want)
+	}
+}
+
+func TestListColorUsesANSINotMarkers(t *testing.T) {
+	// On a terminal the markdown markers give way to ANSI styling, so the clean
+	// view carries no literal ## or ** and does carry color escapes.
+	out := renderRecords(t, Options{Format: List, Color: true},
+		Record{Cols: []string{"username", "name"}, Vals: []string{"karpathy", "Andrej"}},
+	)
+	if strings.Contains(out, "##") || strings.Contains(out, "**") {
+		t.Errorf("colored list leaked markdown markers: %q", out)
+	}
+	if !strings.Contains(out, "\x1b[") {
+		t.Errorf("colored list missing ANSI: %q", out)
+	}
+	if !strings.Contains(out, "karpathy") || !strings.Contains(out, "Andrej") {
+		t.Errorf("colored list dropped content: %q", out)
+	}
+}
+
 func TestRecordJSONUsesValue(t *testing.T) {
 	// The table columns differ from the JSON shape: json must marshal Value.
 	out := renderRecords(t, Options{Format: JSONL},

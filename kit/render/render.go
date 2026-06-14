@@ -10,6 +10,13 @@
 // Both buffer their rows and draw once on Flush so every column sizes to its
 // widest cell.
 //
+// The list format is the readable alternative to a grid: each record becomes a
+// short section — a heading drawn from the first column, then the rest as a
+// "- **key**: value" bullet list — and records stream as they arrive rather than
+// buffering, so a slow command stays responsive. On a terminal (color on) the
+// markdown markers give way to ANSI styling for a clean detail view; piped
+// (color off) it emits literal GitHub-flavored markdown.
+//
 // Tag grammar (on a struct field):
 //
 //	table:"name"            include in the table/csv view under column "name"
@@ -41,6 +48,7 @@ const (
 	Auto     Format = "auto"
 	Table    Format = "table"
 	Markdown Format = "markdown"
+	List     Format = "list"
 	JSON     Format = "json"
 	JSONL    Format = "jsonl"
 	CSV      Format = "csv"
@@ -55,6 +63,8 @@ func normalizeFormat(f Format) Format {
 	switch f {
 	case "md":
 		return Markdown
+	case "section", "sections":
+		return List
 	default:
 		return f
 	}
@@ -90,9 +100,9 @@ func (rec Record) value() any {
 type Options struct {
 	Format   Format    // the encoding; Auto resolves to Table on a TTY else JSONL
 	IsTTY    bool      // whether the writer is an interactive terminal (for Auto)
-	Color    bool      // emit ANSI color (table accents, JSON highlighting); kit resolves --color
+	Color    bool      // emit ANSI color (table/list accents, JSON highlighting); kit resolves --color
 	Fields   []string  // projection: restrict/reorder columns by name
-	NoHeader bool      // omit the header row in table/csv
+	NoHeader bool      // omit the header row in table/csv/markdown, and the heading in list
 	Template string    // when set, format becomes Template
 	Width    int       // truncation width for `truncate` columns (0 = no limit)
 	Writer   io.Writer // destination
@@ -114,6 +124,8 @@ type Renderer struct {
 	gridHead []string   // buffered header for table/markdown
 	gridRows [][]string // buffered rows for table/markdown
 	gridSeen bool       // whether any grid record has been collected
+
+	listSeen bool // whether a list-format record has already been emitted
 }
 
 // New builds a Renderer, resolving Auto and compiling any template.
@@ -150,6 +162,8 @@ func (r *Renderer) Emit(rec any) error {
 	switch r.o.Format {
 	case Table, Markdown:
 		return r.collectGrid(rec)
+	case List:
+		return r.emitList(rec)
 	case CSV, TSV:
 		return r.emitDelim(rec)
 	case JSONL:
@@ -255,6 +269,64 @@ func (r *Renderer) collectGrid(rec any) error {
 	}
 	r.gridRows = append(r.gridRows, vals)
 	return nil
+}
+
+// emitList renders one record as a readable section: a heading drawn from the
+// first column, then the remaining columns as a "- **key**: value" bullet list.
+// Records are separated by a blank line. Unlike the table and markdown grids it
+// streams — each record prints the moment it arrives — so a slow command stays
+// responsive. When color is on (a terminal) the markdown markers give way to
+// ANSI styling for a clean detail view; with color off (piped or --color=never)
+// it emits literal GitHub-flavored markdown that pastes into an issue or README
+// unchanged. --no-header drops the heading, so every column becomes a bullet.
+func (r *Renderer) emitList(rec any) error {
+	cols, vals := r.columns(rec)
+	if len(cols) == 0 {
+		return nil
+	}
+	var b strings.Builder
+	if r.listSeen {
+		b.WriteByte('\n') // blank line between records
+	}
+	r.listSeen = true
+
+	bcols, bvals := cols, vals
+	if !r.o.NoHeader {
+		head := ""
+		if len(vals) > 0 {
+			head = vals[0]
+		}
+		if r.o.Color {
+			b.WriteString(ansiHead + head + ansiReset + "\n")
+		} else {
+			b.WriteString("## " + head + "\n")
+		}
+		bcols, bvals = cols[1:], vals[1:]
+	}
+	// In the color view, pad keys to the record's widest so values line up into a
+	// clean column; the markdown view leaves bullets unpadded so they stay valid.
+	keyWidth := 0
+	if r.o.Color {
+		for _, c := range bcols {
+			if n := len([]rune(c)); n > keyWidth {
+				keyWidth = n
+			}
+		}
+	}
+	for i, c := range bcols {
+		v := ""
+		if i < len(bvals) {
+			v = bvals[i]
+		}
+		if r.o.Color {
+			pad := strings.Repeat(" ", keyWidth-len([]rune(c)))
+			b.WriteString("  " + ansiKey + c + ansiReset + pad + "  " + v + "\n")
+		} else {
+			b.WriteString("- **" + c + "**: " + v + "\n")
+		}
+	}
+	_, err := io.WriteString(r.w, b.String())
+	return err
 }
 
 func (r *Renderer) emitDelim(rec any) error {
