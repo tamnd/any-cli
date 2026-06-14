@@ -107,10 +107,11 @@ func (r *Renderer) tableStyle() table.StyleFunc {
 
 const (
 	ansiReset = "\x1b[0m"
-	ansiKey   = "\x1b[36m" // cyan
-	ansiStr   = "\x1b[32m" // green
-	ansiNum   = "\x1b[33m" // yellow
-	ansiLit   = "\x1b[35m" // magenta: true/false/null
+	ansiKey   = "\x1b[36m"         // cyan
+	ansiStr   = "\x1b[32m"         // green
+	ansiNum   = "\x1b[33m"         // yellow
+	ansiLit   = "\x1b[35m"         // magenta: true/false/null
+	ansiHead  = "\x1b[1;38;5;212m" // bold pink: the list heading, matching the table header accent (color 212)
 )
 
 // colorJSON highlights marshaled JSON when color is enabled, and returns the
