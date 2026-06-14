@@ -21,6 +21,13 @@ type OpMeta struct {
 	Args    []Arg    // positional argument schema (names line up with In arg fields)
 	Write   bool     // a state-changing op; gated and annotated on every surface
 	Single  bool     // emits at most one record (no "no results" on empty stream)
+
+	// URI metadata (8000_uri, 8000_uri_drivers). These make an op addressable by
+	// resource URI in a multi-domain host such as ant. They are inert on a
+	// single-site binary, so a domain can adopt them with no behavior change.
+	URIType  string // the URI authority this op dereferences, e.g. "status" for x's tweet; defaults to the lower-cased Out type name
+	Resolver bool   // canonical dereferencer for URIType when several ops share it
+	List     bool   // member-lister for a parent resource: `ant ls` / feed:// resolve here
 }
 
 // key is the space-joined command path, "rank domain" for a nested op or just
@@ -103,6 +110,10 @@ type Operation interface {
 	// and routes each emitted record to the sink, applying the store tee and the
 	// limit. rt carries the injected handles.
 	Invoke(ctx context.Context, in Input, rt RunContext, sink Sink) error
+	// OutType is the record type the op emits (struct, pointer stripped), or nil
+	// when the op emits no struct. A multi-domain host indexes ops by it so a
+	// resource URI's authority can select the op that mints that record type.
+	OutType() reflect.Type
 }
 
 type fieldBind struct {
@@ -131,6 +142,8 @@ func Handle[In, Out any](app *App, meta OpMeta, fn func(context.Context, In, fun
 }
 
 func (o *op[In, Out]) Meta() OpMeta { return o.meta }
+
+func (o *op[In, Out]) OutType() reflect.Type { return o.outTyp }
 
 func (o *op[In, Out]) Params() []ParamSpec {
 	out := make([]ParamSpec, 0, len(o.binds))
@@ -179,15 +192,7 @@ func (o *op[In, Out]) reflectOut() {
 		return
 	}
 	o.outCol = t.Name()
-	for f := range t.Fields() {
-		if tag, ok := f.Tag.Lookup("kit"); ok && hasOpt(tag, "id") {
-			o.idIdx = f.Index
-			break
-		}
-		if jsonNameOf(f) == "id" && o.idIdx == nil {
-			o.idIdx = f.Index
-		}
-	}
+	o.idIdx = idFieldIndex(t)
 }
 
 func parseBind(f reflect.StructField, tag string) fieldBind {
