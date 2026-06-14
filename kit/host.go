@@ -42,6 +42,7 @@ type mount struct {
 	resolvers map[string]Operation // authority -> single-record dereference op
 	picked    map[string]bool      // authority chosen via OpMeta.Resolver
 	lists     map[string]Operation // authority -> member-list op
+	search    Operation            // free-text query op, if the domain has one
 
 	once   sync.Once
 	client any
@@ -118,11 +119,18 @@ func Open(opts ...HostOption) (*Host, error) {
 // so a URI's authority selects the op that mints that record type.
 func (h *Host) index(scheme string, m *mount) {
 	for _, op := range m.app.ops {
+		meta := op.Meta()
+		// A free-text search op is keyed by its verb, not by a URI authority: its
+		// results are named by their own record ids, not by the query string, so it
+		// is not URI-addressable. Capture it here, before the OutType gate, so a
+		// host can still drive a domain's search even when it emits a bare any.
+		if m.search == nil && meta.Name == "search" && meta.Parent == "" {
+			m.search = op
+		}
 		t := op.OutType()
 		if t == nil {
 			continue
 		}
-		meta := op.Meta()
 		authority := meta.URIType
 		if authority == "" {
 			authority = strings.ToLower(t.Name())
@@ -257,6 +265,29 @@ func (h *Host) List(ctx context.Context, u URI, limit int) ([]any, error) {
 		return nil, errs.Usage("%s has no list for %q", u.Scheme, u.Authority)
 	}
 	return m.invoke(ctx, op, u.ID(), limit)
+}
+
+// Searchable reports whether a domain (by scheme or alias) registered a
+// free-text search op, so a host such as ant can decide to offer a search box.
+func (h *Host) Searchable(scheme string) bool {
+	m, ok := h.mounts[canonScheme(scheme)]
+	return ok && m.search != nil
+}
+
+// Search runs a domain's free-text search op for a query and returns the records
+// it emits, each still the domain's own type (so a caller can Wrap or Mint the
+// hits that are URI-addressable). limit caps the result (0 means the op's own
+// default). It is the query counterpart to Get and List: where those dereference
+// a name, Search discovers names from text.
+func (h *Host) Search(ctx context.Context, scheme, query string, limit int) ([]any, error) {
+	m, ok := h.mounts[canonScheme(scheme)]
+	if !ok {
+		return nil, errs.Usage("unknown domain: %q", scheme)
+	}
+	if m.search == nil {
+		return nil, errs.Unsupported("domain %q has no search", scheme)
+	}
+	return m.invoke(ctx, m.search, query, limit)
 }
 
 // Links returns the outbound graph edges of a record: one URI per kit:"link"
