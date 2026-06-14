@@ -15,9 +15,26 @@ nothing to sign up for and nothing to run alongside it.
 - A **library package** (`<< .LibPkg >>`) holds the HTTP client and the typed
   data models. It paces requests, sets an honest User-Agent, and retries the
   transient failures any public site throws under load.
-- A **command tree** (`cli`) wraps the library in subcommands with shared
-  output formats and flags.
-- One **`cmd/<< .Binary >>`** entry point ties them together.
+- A **domain** (`<< .LibPkg >>/domain.go`) declares each operation once on the
+  [any-cli/kit](https://github.com/tamnd/any-cli) framework. That single
+  declaration becomes a CLI command, an HTTP route, an MCP tool, and a
+  resource-URI dereference. It is the one place you add to the tool.
+- A thin **`cmd/<< .Binary >>`** hands the assembled app to `kit.Run`, which
+  builds the command tree and the serve and mcp surfaces.
+
+## One operation, four surfaces
+
+Because an operation is surface-neutral, the same `page` you run on the command
+line is also a route and a tool:
+
+```bash
+<< .Binary >> page <path>                  # the command
+<< .Binary >> serve --addr :7777           # GET /v1/page/<path>
+<< .Binary >> mcp                          # the page tool, over stdio
+ant get << .Scheme >>://page/<path>        # the URI dereference (via a host)
+```
+
+You write the fetch and the record shape; the surfaces come for free.
 
 ## Scope
 

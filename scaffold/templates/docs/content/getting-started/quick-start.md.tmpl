@@ -1,19 +1,71 @@
 ---
 title: "Quick start"
-description: "Run your first << .Binary >> command."
+description: "Fetch your first record with << .Binary >>."
 weight: 30
 ---
 
-Once `<< .Binary >>` is on your `PATH`:
+Once `<< .Binary >>` is on your `PATH`, fetch a page. The argument is the path
+of the page on << .Host >> (everything after the host), or a full URL:
 
 ```bash
-<< .Binary >> --help       # see the command tree
-<< .Binary >> version      # build info
+<< .Binary >> page <path>
 ```
 
-This is a fresh scaffold, so the command tree is just `version` for now. Add
-your first real command in `cli/`, build on the `<< .LibPkg >>` library package,
-and document it here.
+By default you get an aligned table. Ask for JSON when you want to pipe it:
 
-A good first command usually fetches one thing and prints it as JSON, so the
-output pipes straight into `jq` and the rest of your tools.
+```bash
+$ << .Binary >> page <path> -o json
+[
+  {
+    "id": "<path>",
+    "url": "https://<< .Host >>/<path>",
+    "title": "<path>",
+    "body": "..."
+  }
+]
+```
+
+## Shape the output
+
+The same flags work on every command:
+
+```bash
+<< .Binary >> page <path> --fields id,url        # keep only these columns
+<< .Binary >> page <path> --template '{{.Body}}' # just the body text
+<< .Binary >> page <path> -o jsonl | jq .url     # one object per line, into jq
+```
+
+`-o` takes `table`, `json`, `jsonl`, `csv`, `tsv`, `url`, or `raw`. Left to
+`auto`, it prints a table to a terminal and JSONL into a pipe, so the same
+command reads well by hand and parses cleanly downstream. See
+[output formats](/reference/output/) for the full contract.
+
+## Follow the links
+
+`links` lists the pages a page links to, and each one is a path you can fetch in
+turn:
+
+```bash
+<< .Binary >> links <path> -n 10                 # the first ten links
+<< .Binary >> links <path> -o url                # just the URLs
+<< .Binary >> links <path> -o url | head -3 | xargs -n1 << .Binary >> page
+```
+
+## Serve it instead
+
+The same operations are available over HTTP and to agents over MCP:
+
+```bash
+<< .Binary >> serve --addr :7777 &
+curl -s 'localhost:7777/v1/page/<path>'          # NDJSON, one record per line
+<< .Binary >> mcp                                # MCP over stdio: page, links
+```
+
+## What to build next
+
+This scaffold ships one example type, `page`, wired end to end so the whole
+chain works today. To make it really about << .Name >>, model the records you
+care about in `<< .LibPkg >>/` and declare their operations in
+`<< .LibPkg >>/domain.go`. Each one you add shows up as a command here, a route
+under `serve`, and a tool under `mcp`, with no extra wiring. The
+[guides](/guides/) cover the common jobs.

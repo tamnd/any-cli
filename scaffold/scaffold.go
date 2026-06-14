@@ -26,6 +26,9 @@ type Site struct {
 	Repo        string // repository name, e.g. "reddit-cli"
 	Binary      string // command/binary name, e.g. "reddit"
 	LibPkg      string // library package name, e.g. "reddit"
+	Scheme      string // resource-URI scheme the kit domain owns, e.g. "reddit"
+	Host        string // the site host the client and domain target, e.g. "reddit.com"
+	EnvPrefix   string // env var prefix, the upper-cased binary, e.g. "REDDIT"
 	Owner       string // GitHub owner, e.g. "tamnd"
 	Module      string // Go module path, e.g. "github.com/tamnd/reddit-cli"
 	Image       string // container image, e.g. "ghcr.io/tamnd/reddit"
@@ -53,6 +56,9 @@ func NewSite(name string, opt Options) Site {
 		Repo:        repo,
 		Binary:      binary,
 		LibPkg:      name,
+		Scheme:      name,
+		Host:        orDefault(opt.Host, name+".com"),
+		EnvPrefix:   strings.ToUpper(binary),
 		Owner:       owner,
 		Module:      fmt.Sprintf("github.com/%s/%s", owner, repo),
 		Image:       fmt.Sprintf("ghcr.io/%s/%s", owner, binary),
@@ -73,6 +79,7 @@ func NewSite(name string, opt Options) Site {
 type Options struct {
 	Owner       string
 	Binary      string
+	Host        string
 	Short       string
 	Description string
 	License     string
