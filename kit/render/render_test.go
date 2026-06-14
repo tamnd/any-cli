@@ -212,3 +212,36 @@ func TestNarrowTableNotStretched(t *testing.T) {
 		}
 	}
 }
+
+func TestMarkdownEscapesPipes(t *testing.T) {
+	out := renderRecords(t, Options{Format: Markdown},
+		Record{Cols: []string{"title", "n"}, Vals: []string{"Beginners | Full Course", "1"}},
+	)
+	if !strings.Contains(out, `Beginners \| Full Course`) {
+		t.Errorf("pipe not escaped in markdown cell: %q", out)
+	}
+	// Every body/header line must have the same number of unescaped pipes, or a
+	// renderer would misalign the columns.
+	var want int
+	for i, line := range strings.Split(strings.TrimSpace(out), "\n") {
+		got := countCellSeparators(line)
+		if i == 0 {
+			want = got
+			continue
+		}
+		if got != want {
+			t.Errorf("line %d has %d separators, want %d: %q", i, got, want, line)
+		}
+	}
+}
+
+// countCellSeparators counts unescaped pipes, the real GFM column separators.
+func countCellSeparators(line string) int {
+	n := 0
+	for i := 0; i < len(line); i++ {
+		if line[i] == '|' && (i == 0 || line[i-1] != '\\') {
+			n++
+		}
+	}
+	return n
+}
