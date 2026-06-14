@@ -300,6 +300,22 @@ func (h *Host) Mint(rec any) (URI, error) {
 	return URI{Scheme: tp.scheme, Authority: tp.authority, Path: splitID(ids[0])}, nil
 }
 
+// Body returns the record's long-text body (the kit:"body" field) and whether
+// it has one, so `ant cat` and the Markdown export can print the human-readable
+// text without knowing which field holds it. It is pure reflection over the tag.
+func (h *Host) Body(rec any) (string, bool) {
+	t := derefType(reflect.TypeOf(rec))
+	idx := bodyFieldIndex(t)
+	if idx == nil {
+		return "", false
+	}
+	ss := fieldStrings(rec, idx)
+	if len(ss) == 0 {
+		return "", false
+	}
+	return ss[0], true
+}
+
 // canon resolves a parsed URI's scheme to its canonical form and checks the
 // domain (or reserved kind) is one this host knows.
 func (h *Host) canon(u URI) (URI, error) {
