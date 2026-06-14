@@ -32,21 +32,6 @@ func idFieldIndex(t reflect.Type) []int {
 	return fallback
 }
 
-// bodyFieldIndex returns the index path of the field tagged kit:"body", the long
-// text a Markdown export uses as the document body. It returns nil when no field
-// is tagged.
-func bodyFieldIndex(t reflect.Type) []int {
-	if t == nil || t.Kind() != reflect.Struct {
-		return nil
-	}
-	for f := range t.Fields() {
-		if tag, ok := f.Tag.Lookup("kit"); ok && hasHead(tag, "body") {
-			return append([]int(nil), f.Index...)
-		}
-	}
-	return nil
-}
-
 // linkField is one reference field on a record: where it lives, what kind of
 // resource it points at, and whether it is optional or multi-valued.
 type linkField struct {
