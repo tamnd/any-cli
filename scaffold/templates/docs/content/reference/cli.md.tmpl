@@ -5,7 +5,7 @@ weight: 10
 ---
 
 ```
-<< .Binary >> <command> [subcommand] [flags]
+<< .Binary >> <command> [arguments] [flags]
 ```
 
 Run `<< .Binary >> <command> --help` for the full flag list on any command. This
@@ -15,6 +15,36 @@ page is the map; keep it in step with the real command tree as you add to it.
 
 | Command | What it does |
 |---|---|
+| `page <ref>` | Fetch a page by path or URL |
+| `links <ref>` | List the pages a page links to |
+| `serve [--addr]` | Serve the operations over HTTP as NDJSON |
+| `mcp` | Run as an MCP server over stdio |
 | `version` | Print the version and exit |
 
-Add a row per command here as you build them out.
+`page` and `links` are the example operations the scaffold ships. Add a row here
+per operation you declare in `<< .LibPkg >>/domain.go`.
+
+## Global flags
+
+These are shared by every operation, so they work the same on every command.
+
+| Flag | Meaning |
+|---|---|
+| `-o, --output` | Output format: `auto`, `table`, `json`, `jsonl`, `csv`, `tsv`, `url`, `raw` |
+| `--fields` | Comma-separated columns to keep |
+| `--template` | Go text/template applied per record |
+| `--no-header` | Omit the header row in `table` and `csv` |
+| `-n, --limit` | Stop after N records (0 means no limit) |
+| `--rate` | Minimum delay between requests |
+| `--retries` | Retry attempts on rate limit or 5xx |
+| `--timeout` | Per-request timeout |
+| `--data-dir` | Override the data directory |
+| `--no-cache` | Bypass on-disk caches |
+| `--db` | Tee every record into a store (e.g. `out.db`, `postgres://...`) |
+| `-v, --verbose` | Increase verbosity (repeatable) |
+| `-q, --quiet` | Suppress progress output |
+| `--color` | `auto`, `always`, or `never` |
+
+See [output formats](/reference/output/) for what `-o`, `--fields`, and
+`--template` produce, and [configuration](/reference/configuration/) for
+environment variables and defaults.

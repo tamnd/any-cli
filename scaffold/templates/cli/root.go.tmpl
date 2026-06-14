@@ -1,8 +1,10 @@
-// Package cli builds the << .Binary >> command tree on top of the << .LibPkg >> library.
+// Package cli assembles the << .Binary >> command tree from the << .LibPkg >>
+// domain on top of the any-cli/kit framework.
 package cli
 
 import (
-	"github.com/spf13/cobra"
+	"github.com/tamnd/any-cli/kit"
+	"<< .Module >>/<< .LibPkg >>"
 )
 
 // Build metadata, set via -ldflags at release time.
@@ -12,20 +14,21 @@ var (
 	Date    = "unknown"
 )
 
-// Root builds the root command and its subtree.
-func Root() *cobra.Command {
-	root := &cobra.Command{
-		Use:   "<< .Binary >>",
-		Short: "<< .Short >>",
-		Long: `<< .Short >>
+// NewApp assembles the kit application from the << .LibPkg >> domain. The
+// domain's Register installs the client factory and every operation, so the
+// binary and a host (ant, which blank-imports the package) share one source of
+// truth. kit.Run turns the App into the CLI, plus the serve and mcp surfaces and
+// the typed-error-to-exit-code mapping.
+//
+// To add a command, declare it in << .LibPkg >>/domain.go with kit.Handle and it
+// appears here automatically. Reach for app.AddCommand only for a verb that does
+// not fit the emit-records shape, the way version does below.
+func NewApp() *kit.App {
+	id := << .LibPkg >>.Domain{}.Info().Identity
+	id.Version = Version
 
-This is a fresh scaffold. Add your commands here on top of the << .LibPkg >>
-library package, then wire them into Root with root.AddCommand.`,
-		SilenceUsage:  true,
-		SilenceErrors: true,
-	}
-
-	root.AddCommand(newVersionCmd())
-	// TODO: root.AddCommand(newGetCmd()), etc.
-	return root
+	app := kit.New(id)
+	(<< .LibPkg >>.Domain{}).Register(app)
+	app.AddCommand(newVersionCmd())
+	return app
 }

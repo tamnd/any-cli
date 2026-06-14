@@ -14,6 +14,9 @@ func TestNewSiteDerivesFields(t *testing.T) {
 		s.Repo:      "reddit-cli",
 		s.Binary:    "reddit",
 		s.LibPkg:    "reddit",
+		s.Scheme:    "reddit",
+		s.Host:      "reddit.com",
+		s.EnvPrefix: "REDDIT",
 		s.Module:    "github.com/tamnd/reddit-cli",
 		s.Image:     "ghcr.io/tamnd/reddit",
 		s.Domain:    "reddit-cli.tamnd.com",
@@ -35,6 +38,9 @@ func TestNewSiteOverrides(t *testing.T) {
 	}
 	if s.Binary != "lob" || s.Image != "ghcr.io/acme/lob" {
 		t.Errorf("Binary/Image = %q / %q", s.Binary, s.Image)
+	}
+	if s.EnvPrefix != "LOB" {
+		t.Errorf("EnvPrefix = %q, want LOB (the upper-cased binary)", s.EnvPrefix)
 	}
 	if s.License != "MIT" {
 		t.Errorf("License = %q", s.License)
@@ -71,6 +77,8 @@ func TestRenderWritesBuildableTree(t *testing.T) {
 		"cmd/reddit/main.go",
 		"reddit/reddit.go",
 		"reddit/reddit_test.go",
+		"reddit/domain.go",
+		"reddit/domain_test.go",
 		"docs/tago.toml",
 		"docs/content/reference/output.md",
 		"docs/content/reference/troubleshooting.md",
@@ -87,6 +95,15 @@ func TestRenderWritesBuildableTree(t *testing.T) {
 	}
 	if !strings.Contains(string(mod), "module github.com/tamnd/reddit-cli") {
 		t.Errorf("go.mod module line wrong:\n%s", mod)
+	}
+
+	// The domain driver must register the site's scheme so a host can mount it.
+	dom, err := os.ReadFile(filepath.Join(dest, "reddit/domain.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(dom), `Scheme: "reddit"`) {
+		t.Errorf("domain.go missing the reddit scheme:\n%s", dom)
 	}
 
 	// No unresolved template delimiters should survive anywhere.
