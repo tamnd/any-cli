@@ -226,7 +226,7 @@ unless its `OpMeta.Single` is set.
 
 - `kit` — the registry, the surfaces, the `Command` builder, `Client`/`MustClient`.
 - `kit/errs` — the error taxonomy and its exit-code and HTTP-status mapping.
-- `kit/render` — the record renderer (`--output` table/json/jsonl/csv/tsv/url/raw/template).
+- `kit/render` — the record renderer (`--output` table/markdown/json/jsonl/csv/tsv/url/raw/template; table and JSON are color-aware on a TTY).
 - `kit/store` — the optional record store written to when `--db` is set.
 
 See [docs.go](docs.go) for the package overview rendered by `go doc`.

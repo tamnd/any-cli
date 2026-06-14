@@ -36,6 +36,7 @@ type OutputOptions struct {
 	NoHeader bool
 	Template string
 	IsTTY    bool
+	Color    bool
 	Width    int
 }
 
@@ -46,6 +47,7 @@ func (s *State) Renderer(w io.Writer) (*render.Renderer, error) {
 	return render.New(render.Options{
 		Format:   render.Format(s.Output.Format),
 		IsTTY:    s.Output.IsTTY,
+		Color:    s.Output.Color,
 		Fields:   s.Output.Fields,
 		NoHeader: s.Output.NoHeader,
 		Template: s.Output.Template,

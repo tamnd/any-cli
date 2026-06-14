@@ -33,10 +33,11 @@ docker run --rm << .Image >>:latest --help
 << .Binary >> --help                           # the whole command tree
 ```
 
-Every command shares one output contract: `-o table|json|jsonl|csv|tsv|url|raw`,
-`--fields` to pick columns, `--template` for a custom line, and `-n` to limit.
-The default adapts to where output goes (a table on a terminal, JSONL in a
-pipe), so the same command reads well by hand and parses cleanly downstream.
+Every command shares one output contract:
+`-o table|markdown|json|jsonl|csv|tsv|url|raw`, `--fields` to pick columns,
+`--template` for a custom line, and `-n` to limit. The default adapts to where
+output goes (a color-aware table on a terminal, JSONL in a pipe), so the same
+command reads well by hand and parses cleanly downstream.
 
 This is a fresh scaffold. It ships one example resource type, `page`, wired end
 to end. Model the real << .Name >> records in `<< .LibPkg >>/` and declare their

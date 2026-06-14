@@ -95,3 +95,95 @@ func TestRendererWriteRaw(t *testing.T) {
 		t.Errorf("Write = %q", buf.String())
 	}
 }
+
+func TestTablePlainHasNoANSI(t *testing.T) {
+	out := renderRecords(t, Options{Format: Table, Color: false},
+		Record{Cols: []string{"a", "b"}, Vals: []string{"hi", "1"}},
+	)
+	if strings.Contains(out, "\x1b") {
+		t.Errorf("plain table leaked ANSI: %q", out)
+	}
+	if !strings.Contains(out, "╭") || !strings.Contains(out, "A") || !strings.Contains(out, "hi") {
+		t.Errorf("table missing border/header/value: %q", out)
+	}
+}
+
+func TestTableColorEmitsANSI(t *testing.T) {
+	out := renderRecords(t, Options{Format: Table, Color: true},
+		Record{Cols: []string{"a"}, Vals: []string{"hi"}},
+	)
+	if !strings.Contains(out, "\x1b") {
+		t.Errorf("colored table emitted no ANSI: %q", out)
+	}
+}
+
+func TestMarkdownTable(t *testing.T) {
+	out := renderRecords(t, Options{Format: Markdown},
+		Record{Cols: []string{"a", "b"}, Vals: []string{"hi", "1"}},
+		Record{Cols: []string{"a", "b"}, Vals: []string{"yo", "2"}},
+	)
+	if strings.Contains(out, "\x1b") {
+		t.Errorf("markdown must never be colored: %q", out)
+	}
+	// A valid GitHub pipe table: header keeps its case, a dashed rule follows,
+	// and rows are piped.
+	if !strings.Contains(out, "| a ") || !strings.Contains(out, "|---") || !strings.Contains(out, "| hi ") {
+		t.Errorf("not a markdown table: %q", out)
+	}
+}
+
+func TestMarkdownAlias(t *testing.T) {
+	r, err := New(Options{Format: "md", Writer: &bytes.Buffer{}})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	if r.Format() != Markdown {
+		t.Errorf("md did not resolve to markdown: %q", r.Format())
+	}
+}
+
+func TestJSONLColorGating(t *testing.T) {
+	plain := renderRecords(t, Options{Format: JSONL, Color: false},
+		Record{Cols: []string{"n"}, Vals: []string{"1"}, Value: map[string]any{"n": 1, "ok": true, "s": "x"}},
+	)
+	if strings.Contains(plain, "\x1b") {
+		t.Errorf("piped jsonl leaked ANSI: %q", plain)
+	}
+	colored := renderRecords(t, Options{Format: JSONL, Color: true},
+		Record{Cols: []string{"n"}, Vals: []string{"1"}, Value: map[string]any{"n": 1, "ok": true, "s": "x"}},
+	)
+	if !strings.Contains(colored, "\x1b") {
+		t.Errorf("colored jsonl emitted no ANSI: %q", colored)
+	}
+	// The bytes, once ANSI is stripped, must still be the same JSON.
+	if stripANSI(colored) != plain {
+		t.Errorf("color changed the JSON bytes:\n plain=%q\n strip=%q", plain, stripANSI(colored))
+	}
+}
+
+func stripANSI(s string) string {
+	var b strings.Builder
+	for i := 0; i < len(s); {
+		if s[i] == '\x1b' {
+			for i < len(s) && s[i] != 'm' {
+				i++
+			}
+			i++ // skip the 'm'
+			continue
+		}
+		b.WriteByte(s[i])
+		i++
+	}
+	return b.String()
+}
+
+func TestEmptyGridEmitsNothing(t *testing.T) {
+	var buf bytes.Buffer
+	r, _ := New(Options{Format: Table, Writer: &buf})
+	if err := r.Flush(); err != nil {
+		t.Fatalf("Flush: %v", err)
+	}
+	if buf.Len() != 0 {
+		t.Errorf("empty table wrote %q", buf.String())
+	}
+}

@@ -1,8 +1,14 @@
 // Package render turns a stream of record structs into one of the output
-// formats the kit CLI supports: table, json, jsonl, csv, tsv, url, raw, and a
-// Go text/template. It works off struct reflection and the `table:` and `json:`
-// tags, so any record type renders without per-type code. It holds no domain
-// knowledge and is reusable on its own.
+// formats the kit CLI supports: table, markdown, json, jsonl, csv, tsv, url,
+// raw, and a Go text/template. It works off struct reflection and the `table:`
+// and `json:` tags, so any record type renders without per-type code. It holds
+// no domain knowledge and is reusable on its own.
+//
+// The table and markdown formats are drawn with lipgloss. table is a
+// rounded-border, color-aware grid meant for a terminal; markdown is a
+// GitHub-flavored pipe table meant for pasting into docs, issues, and READMEs.
+// Both buffer their rows and draw once on Flush so every column sizes to its
+// widest cell.
 //
 // Tag grammar (on a struct field):
 //
@@ -24,7 +30,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"text/tabwriter"
 	"text/template"
 	"time"
 )
@@ -35,6 +40,7 @@ type Format string
 const (
 	Auto     Format = "auto"
 	Table    Format = "table"
+	Markdown Format = "markdown"
 	JSON     Format = "json"
 	JSONL    Format = "jsonl"
 	CSV      Format = "csv"
@@ -43,6 +49,16 @@ const (
 	Raw      Format = "raw"
 	Template Format = "template"
 )
+
+// normalizeFormat folds short aliases onto their canonical format.
+func normalizeFormat(f Format) Format {
+	switch f {
+	case "md":
+		return Markdown
+	default:
+		return f
+	}
+}
 
 // Record is a row a command has already projected: an explicit ordered column
 // set (Cols/Vals) for the table, csv, tsv, and url formats, plus the original
@@ -74,6 +90,7 @@ func (rec Record) value() any {
 type Options struct {
 	Format   Format    // the encoding; Auto resolves to Table on a TTY else JSONL
 	IsTTY    bool      // whether the writer is an interactive terminal (for Auto)
+	Color    bool      // emit ANSI color (table accents, JSON highlighting); kit resolves --color
 	Fields   []string  // projection: restrict/reorder columns by name
 	NoHeader bool      // omit the header row in table/csv
 	Template string    // when set, format becomes Template
@@ -82,17 +99,21 @@ type Options struct {
 }
 
 // Renderer renders records incrementally; one instance handles a whole run so
-// streaming formats write as records arrive.
+// streaming formats write as records arrive. The grid formats (table, markdown)
+// instead buffer their rows and draw once on Flush.
 type Renderer struct {
 	o    Options
 	w    io.Writer
 	tmpl *template.Template
 
-	tw         *tabwriter.Writer
 	csvw       *csv.Writer
 	headerDone bool
 	jsonOpen   bool
 	jsonFirst  bool
+
+	gridHead []string   // buffered header for table/markdown
+	gridRows [][]string // buffered rows for table/markdown
+	gridSeen bool       // whether any grid record has been collected
 }
 
 // New builds a Renderer, resolving Auto and compiling any template.
@@ -101,6 +122,7 @@ func New(o Options) (*Renderer, error) {
 		return nil, fmt.Errorf("render: nil writer")
 	}
 	r := &Renderer{o: o, w: o.Writer}
+	r.o.Format = normalizeFormat(r.o.Format)
 	if o.Template != "" {
 		t, err := template.New("row").Parse(o.Template + "\n")
 		if err != nil {
@@ -126,8 +148,8 @@ func (r *Renderer) Format() Format { return r.o.Format }
 // and its `table:`/`json:` tags) or a Record with explicit columns.
 func (r *Renderer) Emit(rec any) error {
 	switch r.o.Format {
-	case Table:
-		return r.emitTable(rec)
+	case Table, Markdown:
+		return r.collectGrid(rec)
 	case CSV, TSV:
 		return r.emitDelim(rec)
 	case JSONL:
@@ -162,8 +184,8 @@ func jsonValue(rec any) any {
 // Flush finalizes buffered formats. Call once at the end of a run.
 func (r *Renderer) Flush() error {
 	switch {
-	case r.tw != nil:
-		return r.tw.Flush()
+	case r.o.Format == Table || r.o.Format == Markdown:
+		return r.flushGrid()
 	case r.csvw != nil:
 		r.csvw.Flush()
 		return r.csvw.Error()
@@ -223,19 +245,16 @@ func (r *Renderer) project(cols, vals []string) ([]string, []string) {
 	return pc, pv
 }
 
-func (r *Renderer) emitTable(rec any) error {
-	if r.tw == nil {
-		r.tw = tabwriter.NewWriter(r.w, 0, 0, 2, ' ', 0)
-	}
+// collectGrid buffers one record's columns for the table/markdown formats; the
+// grid is drawn once on Flush so every column sizes to its widest cell.
+func (r *Renderer) collectGrid(rec any) error {
 	cols, vals := r.columns(rec)
-	if !r.headerDone && !r.o.NoHeader {
-		if _, err := fmt.Fprintln(r.tw, strings.Join(upper(cols), "\t")); err != nil {
-			return err
-		}
-		r.headerDone = true
+	if !r.gridSeen {
+		r.gridHead = cols
+		r.gridSeen = true
 	}
-	_, err := fmt.Fprintln(r.tw, strings.Join(vals, "\t"))
-	return err
+	r.gridRows = append(r.gridRows, vals)
+	return nil
 }
 
 func (r *Renderer) emitDelim(rec any) error {
@@ -260,7 +279,7 @@ func (r *Renderer) emitJSONL(rec any) error {
 	if err != nil {
 		return err
 	}
-	_, err = fmt.Fprintln(r.w, string(b))
+	_, err = fmt.Fprintln(r.w, r.colorJSON(b))
 	return err
 }
 
@@ -282,7 +301,7 @@ func (r *Renderer) emitJSON(rec any) error {
 	if err != nil {
 		return err
 	}
-	_, err = fmt.Fprint(r.w, "\n  "+string(b))
+	_, err = fmt.Fprint(r.w, "\n  "+r.colorJSON(b))
 	return err
 }
 
