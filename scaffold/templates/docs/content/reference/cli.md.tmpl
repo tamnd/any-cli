@@ -17,12 +17,13 @@ page is the map; keep it in step with the real command tree as you add to it.
 |---|---|
 | `page <ref>` | Fetch a page by path or URL |
 | `links <ref>` | List the pages a page links to |
+| `search <query>` | Search << .Name >> |
 | `serve [--addr]` | Serve the operations over HTTP as NDJSON |
 | `mcp` | Run as an MCP server over stdio |
 | `version` | Print the version and exit |
 
-`page` and `links` are the example operations the scaffold ships. Add a row here
-per operation you declare in `<< .LibPkg >>/domain.go`.
+`page`, `links`, and `search` are the example operations the scaffold ships. Add
+a row here per operation you declare in `<< .LibPkg >>/domain.go`.
 
 ## Global flags
 
@@ -30,7 +31,7 @@ These are shared by every operation, so they work the same on every command.
 
 | Flag | Meaning |
 |---|---|
-| `-o, --output` | Output format: `auto`, `table`, `json`, `jsonl`, `csv`, `tsv`, `url`, `raw` |
+| `-o, --output` | Output format: `auto`, `table`, `markdown`, `list`, `json`, `jsonl`, `csv`, `tsv`, `url`, `raw` |
 | `--fields` | Comma-separated columns to keep |
 | `--template` | Go text/template applied per record |
 | `--no-header` | Omit the header row in `table` and `csv` |

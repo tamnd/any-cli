@@ -53,7 +53,9 @@ func New(kind Kind, format string, args ...any) *Error {
 	return &Error{Kind: kind, Msg: fmt.Sprintf(format, args...)}
 }
 
-// Wrap classifies an existing error under a kind, keeping it unwrappable.
+// Wrap classifies an existing error under a kind. The cause stays reachable
+// through Unwrap, so errors.Is and errors.As still find it even though the
+// message is built without a %w verb.
 func Wrap(kind Kind, err error, format string, args ...any) *Error {
 	return &Error{Kind: kind, Msg: fmt.Sprintf(format, args...), Err: err}
 }

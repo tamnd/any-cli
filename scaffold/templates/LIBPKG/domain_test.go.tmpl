@@ -69,6 +69,10 @@ func TestHostWiring(t *testing.T) {
 		t.Errorf("Body = (%q, %v), want non-empty", body, ok)
 	}
 
+	if !h.Searchable("<< .Scheme >>") {
+		t.Error("Searchable = false, want true (the domain registers a search op)")
+	}
+
 	got, err := h.ResolveOn("<< .Scheme >>", "about")
 	if err != nil || got.String() != "<< .Scheme >>://page/about" {
 		t.Errorf("ResolveOn = (%q, %v), want << .Scheme >>://page/about", got.String(), err)

@@ -3,7 +3,6 @@ package kit
 import (
 	"context"
 	"slices"
-	"sort"
 
 	"github.com/tamnd/any-cli/kit/store"
 )
@@ -134,8 +133,9 @@ func (a *App) Config() Config { return a.cfg }
 // Identity returns the app identity.
 func (a *App) Identity() Identity { return a.id }
 
-// Ops returns the registered operations in registration order.
-func (a *App) Ops() []Operation { return a.ops }
+// Ops returns a copy of the registered operations, in registration order, so a
+// caller cannot mutate the app's internal list.
+func (a *App) Ops() []Operation { return slices.Clone(a.ops) }
 
 func (a *App) register(o Operation) {
 	m := o.Meta()
@@ -154,6 +154,6 @@ func (a *App) register(o Operation) {
 	}
 	if m.Group != "" && !slices.Contains(a.groups, m.Group) {
 		a.groups = append(a.groups, m.Group)
-		sort.Strings(a.groups)
+		slices.Sort(a.groups)
 	}
 }

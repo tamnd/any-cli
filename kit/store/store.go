@@ -19,7 +19,7 @@ package store
 import (
 	"context"
 	"fmt"
-	"sort"
+	"slices"
 	"strings"
 	"sync"
 )
@@ -74,7 +74,7 @@ func Schemes() []string {
 	for s := range openers {
 		out = append(out, s)
 	}
-	sort.Strings(out)
+	slices.Sort(out)
 	return out
 }
 
