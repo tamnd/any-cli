@@ -100,8 +100,7 @@ func hasHead(tag, head string) bool {
 	return strings.TrimSpace(first) == head
 }
 
-// derefType strips pointers from a type, returning the underlying type and
-// whether anything was a struct.
+// derefType strips pointers from a type, returning the underlying element type.
 func derefType(t reflect.Type) reflect.Type {
 	for t != nil && t.Kind() == reflect.Pointer {
 		t = t.Elem()
@@ -131,7 +130,7 @@ func fieldStrings(rec any, index []int) []string {
 	fv := v.FieldByIndex(index)
 	if fv.Kind() == reflect.Slice {
 		out := make([]string, 0, fv.Len())
-		for i := 0; i < fv.Len(); i++ {
+		for i := range fv.Len() {
 			if s := scalarString(fv.Index(i)); s != "" {
 				out = append(out, s)
 			}
@@ -156,9 +155,6 @@ func scalarString(fv reflect.Value) string {
 	case reflect.Pointer:
 		return scalarString(derefValue(fv))
 	default:
-		if !fv.IsValid() {
-			return ""
-		}
 		return ""
 	}
 }

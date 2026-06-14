@@ -3,6 +3,8 @@ package kit
 import (
 	"context"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/charmbracelet/fang"
 )
@@ -22,9 +24,13 @@ func Run(ctx context.Context, app *App) int {
 	return 0
 }
 
-// Main is a convenience wrapper that runs the app with a cancellable context and
-// calls os.Exit with the resulting code.
+// Main is a convenience wrapper that runs the app with a context cancelled on
+// the first interrupt (Ctrl-C) or SIGTERM, then calls os.Exit with the resulting
+// code. The serve and mcp surfaces watch this context, so a signal shuts them
+// down cleanly instead of killing the process mid-write.
 func Main(app *App) {
-	ctx := context.Background()
-	os.Exit(Run(ctx, app))
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	code := Run(ctx, app)
+	stop()
+	os.Exit(code)
 }

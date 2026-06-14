@@ -4,7 +4,7 @@ import (
 	"context"
 	"net/url"
 	"reflect"
-	"sort"
+	"slices"
 	"strings"
 	"sync"
 
@@ -165,7 +165,7 @@ func (h *Host) Domains() []string {
 	for s := range h.mounts {
 		out = append(out, s)
 	}
-	sort.Strings(out)
+	slices.Sort(out)
 	return out
 }
 

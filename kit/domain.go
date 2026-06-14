@@ -2,7 +2,7 @@ package kit
 
 import (
 	"fmt"
-	"sort"
+	"slices"
 	"sync"
 )
 
@@ -99,7 +99,7 @@ func Domains() []string {
 	for s := range domains {
 		out = append(out, s)
 	}
-	sort.Strings(out)
+	slices.Sort(out)
 	return out
 }
 

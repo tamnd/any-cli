@@ -114,7 +114,7 @@ func (a *App) buildCLI() *cobra.Command {
 
 func bindGlobals(root *cobra.Command, g *globalFlags) {
 	f := root.PersistentFlags()
-	f.StringVarP(&g.output, "output", "o", "auto", "output format: auto|table|markdown|json|jsonl|csv|tsv|url|raw")
+	f.StringVarP(&g.output, "output", "o", "auto", "output format: auto|table|markdown|list|json|jsonl|csv|tsv|url|raw")
 	f.StringVar(&g.fields, "fields", "", "comma-separated columns to show")
 	f.StringVar(&g.template, "template", "", "Go template applied per record")
 	f.BoolVar(&g.noHeader, "no-header", false, "omit the header row")

@@ -2,7 +2,7 @@ package kit
 
 import (
 	"net/url"
-	"sort"
+	"slices"
 	"strings"
 
 	"github.com/tamnd/any-cli/kit/errs"
@@ -105,7 +105,7 @@ func (u URI) String() string {
 		for k := range u.Query {
 			keys = append(keys, k)
 		}
-		sort.Strings(keys)
+		slices.Sort(keys)
 		b.WriteByte('?')
 		for i, k := range keys {
 			if i > 0 {
