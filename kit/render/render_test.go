@@ -2,6 +2,7 @@ package render
 
 import (
 	"bytes"
+	"io"
 	"strings"
 	"testing"
 
@@ -25,6 +26,52 @@ func renderRecords(t *testing.T, o Options, recs ...Record) string {
 		t.Fatalf("Flush: %v", err)
 	}
 	return buf.String()
+}
+
+// captureEncoder is a RowEncoder that records the rows it is handed, so a test
+// can assert the registry routed Emit/Flush through it.
+type captureEncoder struct {
+	rows   [][]string
+	closed bool
+}
+
+func (e *captureEncoder) EmitRow(cols, vals []string) error {
+	e.rows = append(e.rows, vals)
+	return nil
+}
+func (e *captureEncoder) Close() error { e.closed = true; return nil }
+
+func TestRegisteredEncoderRoutesRowsAndCloses(t *testing.T) {
+	const fmtName Format = "capture-test"
+	enc := &captureEncoder{}
+	RegisterEncoder(fmtName, func(w io.Writer, o Options) (RowEncoder, error) { return enc, nil })
+
+	var buf bytes.Buffer
+	r, err := New(Options{Format: fmtName, Writer: &buf})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	if err := r.Emit(Record{Cols: []string{"url", "status"}, Vals: []string{"https://a/", "200"}}); err != nil {
+		t.Fatalf("Emit: %v", err)
+	}
+	if err := r.Flush(); err != nil {
+		t.Fatalf("Flush: %v", err)
+	}
+	if len(enc.rows) != 1 || enc.rows[0][0] != "https://a/" {
+		t.Errorf("encoder did not receive the row: %v", enc.rows)
+	}
+	if !enc.closed {
+		t.Errorf("Flush did not close the encoder")
+	}
+	found := false
+	for _, f := range RegisteredFormats() {
+		if f == fmtName {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("RegisteredFormats missing %q: %v", fmtName, RegisteredFormats())
+	}
 }
 
 func TestRecordCSV(t *testing.T) {
