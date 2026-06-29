@@ -112,15 +112,26 @@ func (a *App) buildCLI() *cobra.Command {
 	return root
 }
 
+// outputFlagHelp lists the built-in output formats plus any a binary added
+// through render.RegisterEncoder, so the --output help advertises only what
+// this binary can actually produce.
+func outputFlagHelp() string {
+	base := "output format: auto|table|markdown|list|json|jsonl|csv|tsv|url|raw"
+	for _, f := range render.RegisteredFormats() {
+		base += "|" + string(f)
+	}
+	return base
+}
+
 func bindGlobals(root *cobra.Command, g *globalFlags) {
 	f := root.PersistentFlags()
-	f.StringVarP(&g.output, "output", "o", "auto", "output format: auto|table|markdown|list|json|jsonl|csv|tsv|url|raw")
+	f.StringVarP(&g.output, "output", "o", "auto", outputFlagHelp())
 	f.StringVar(&g.fields, "fields", "", "comma-separated columns to show")
 	f.StringVar(&g.template, "template", "", "Go template applied per record")
 	f.BoolVar(&g.noHeader, "no-header", false, "omit the header row")
 	f.IntVarP(&g.limit, "limit", "n", 0, "stop after N records (0 = no limit)")
 	f.DurationVar(&g.rate, "rate", 0, "minimum delay between requests")
-	f.IntVar(&g.retries, "retries", -1, "retry attempts on rate limit or 5xx")
+	f.IntVar(&g.retries, "retries", -1, "retry attempts on rate limit or 5xx (-1 uses the built-in default)")
 	f.DurationVar(&g.timeout, "timeout", 0, "per-request timeout")
 	f.StringVar(&g.dataDir, "data-dir", "", "override the data directory")
 	f.BoolVar(&g.noCache, "no-cache", false, "bypass on-disk caches")

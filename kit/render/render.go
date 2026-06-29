@@ -34,6 +34,7 @@ import (
 	"fmt"
 	"io"
 	"reflect"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -56,7 +57,49 @@ const (
 	URL      Format = "url"
 	Raw      Format = "raw"
 	Template Format = "template"
+	Parquet  Format = "parquet"
 )
+
+// RowEncoder writes projected rows in a binary or otherwise non-streaming
+// format that the core render package does not implement itself. A consumer
+// supplies one (for example a Parquet writer) through RegisterEncoder, which
+// keeps heavy encoding dependencies out of kit's core.
+type RowEncoder interface {
+	// EmitRow writes one record's projected columns and values. The column set
+	// is stable across a run, so the first call defines the schema.
+	EmitRow(cols, vals []string) error
+	// Close flushes and finalizes the output. It is called once, from Flush.
+	Close() error
+}
+
+// EncoderFactory builds a RowEncoder for a destination writer and the run's
+// options.
+type EncoderFactory func(w io.Writer, o Options) (RowEncoder, error)
+
+var encoderRegistry = map[Format]EncoderFactory{}
+
+// RegisterEncoder teaches kit a format it does not ship, by registering a
+// RowEncoder factory for it. A CLI calls this from an init function (for
+// example to add "parquet") so the encoding dependency lives in the CLI, not
+// in kit. The factory is used only when a run resolves to that exact format.
+func RegisterEncoder(f Format, factory EncoderFactory) {
+	if factory != nil {
+		encoderRegistry[f] = factory
+	}
+}
+
+// RegisteredFormats returns the formats added through RegisterEncoder, sorted.
+// The CLI surface uses it to list only the extra formats a binary actually
+// supports in its --output help, rather than advertising every format kit
+// could in principle carry.
+func RegisteredFormats() []Format {
+	out := make([]Format, 0, len(encoderRegistry))
+	for f := range encoderRegistry {
+		out = append(out, f)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
+	return out
+}
 
 // normalizeFormat folds short aliases onto their canonical format.
 func normalizeFormat(f Format) Format {
@@ -126,6 +169,8 @@ type Renderer struct {
 	gridSeen bool       // whether any grid record has been collected
 
 	listSeen bool // whether a list-format record has already been emitted
+
+	enc RowEncoder // set when the format is served by a registered encoder
 }
 
 // New builds a Renderer, resolving Auto and compiling any template.
@@ -150,6 +195,13 @@ func New(o Options) (*Renderer, error) {
 			r.o.Format = JSONL
 		}
 	}
+	if factory, ok := encoderRegistry[r.o.Format]; ok {
+		enc, err := factory(r.w, r.o)
+		if err != nil {
+			return nil, err
+		}
+		r.enc = enc
+	}
 	return r, nil
 }
 
@@ -159,6 +211,10 @@ func (r *Renderer) Format() Format { return r.o.Format }
 // Emit renders one record. A record is either a struct (rendered by reflection
 // and its `table:`/`json:` tags) or a Record with explicit columns.
 func (r *Renderer) Emit(rec any) error {
+	if r.enc != nil {
+		cols, vals := r.columns(rec)
+		return r.enc.EmitRow(cols, vals)
+	}
 	switch r.o.Format {
 	case Table, Markdown:
 		return r.collectGrid(rec)
@@ -197,6 +253,9 @@ func jsonValue(rec any) any {
 
 // Flush finalizes buffered formats. Call once at the end of a run.
 func (r *Renderer) Flush() error {
+	if r.enc != nil {
+		return r.enc.Close()
+	}
 	switch {
 	case r.o.Format == Table || r.o.Format == Markdown:
 		return r.flushGrid()
