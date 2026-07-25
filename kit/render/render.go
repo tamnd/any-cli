@@ -712,6 +712,17 @@ func stringify(v reflect.Value, c colSpec) string {
 		}
 		return t.Format(time.RFC3339)
 	}
+	// A type that says how it prints gets to say it. Without this a struct field
+	// falls through to the JSON default, and a table cell holding
+	// {"login":"bep","url":"..."} is worse than useless: it is wide enough to
+	// push every other column off the terminal. The check comes after time.Time
+	// because time is a Stringer too and its own format is the one wanted here.
+	if s, ok := v.Interface().(fmt.Stringer); ok {
+		if v.Kind() == reflect.Pointer && v.IsNil() {
+			return ""
+		}
+		return s.String()
+	}
 	switch v.Kind() {
 	case reflect.Pointer, reflect.Interface:
 		if v.IsNil() {
