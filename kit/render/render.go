@@ -25,6 +25,11 @@
 //	table:"name,url"        mark the canonical URL column (used by the url format)
 //	table:"-"               never show in table/csv (still present in json)
 //	(no table tag)          fall back to the json tag name
+//
+// Embedded structs are flattened the way encoding/json flattens them, so a
+// record built out of a shared base type shows that base type's fields as
+// ordinary columns. An embedded field with a name of its own, either
+// table:"name" or json:"name", keeps that name and renders as one cell.
 package render
 
 import (
@@ -286,7 +291,14 @@ func (r *Renderer) columns(rec any) (cols, vals []string) {
 		rv = rv.Elem()
 	}
 	for _, c := range plan.cols {
-		fv := rv.FieldByIndex(c.index)
+		fv, err := rv.FieldByIndexErr(c.index)
+		if err != nil {
+			// A nil embedded pointer on the way to the field, so the record
+			// carries nothing here. An empty cell, not a panic.
+			cols = append(cols, c.name)
+			vals = append(vals, "")
+			continue
+		}
 		s := stringify(fv, c)
 		if c.truncate && r.o.Width > 0 {
 			s = truncate(s, r.o.Width)
@@ -464,11 +476,15 @@ func (r *Renderer) emitURL(rec any) error {
 	if want == nil {
 		return nil
 	}
-	s := stringify(rv.FieldByIndex(want.index), *want)
+	fv, err := rv.FieldByIndexErr(want.index)
+	if err != nil {
+		return nil
+	}
+	s := stringify(fv, *want)
 	if s == "" {
 		return nil
 	}
-	_, err := fmt.Fprintln(r.w, s)
+	_, err = fmt.Fprintln(r.w, s)
 	return err
 }
 
@@ -519,15 +535,38 @@ func planFor(t reflect.Type) *typePlan {
 
 func buildPlan(t reflect.Type) *typePlan {
 	p := &typePlan{}
-	for f := range t.Fields() {
-		if !f.IsExported() {
-			continue
+	collect(t, nil, p)
+	for i := range p.cols {
+		if p.cols[i].isURL {
+			p.urlField = &p.cols[i]
+			break
 		}
+	}
+	return p
+}
+
+// collect appends t's columns to p, walking into embedded structs so a record
+// that shares a base type through embedding shows the base type's fields as
+// columns of its own. prefix is the field index path that leads to t.
+func collect(t reflect.Type, prefix []int, p *typePlan) {
+	for f := range t.Fields() {
 		name, opts, skip := columnName(f)
 		if skip {
 			continue
 		}
-		c := colSpec{name: name, index: f.Index}
+		index := append(append([]int(nil), prefix...), f.Index...)
+		// An embedded struct with a name of its own is one cell, because that is
+		// what asking for a name means. Without one it spreads into its fields.
+		// An unexported embedded type spreads either way: its exported fields are
+		// reachable but the struct itself is not readable as a value.
+		if et, ok := embedded(f); ok && (!f.IsExported() || !named(f)) {
+			collect(et, index, p)
+			continue
+		}
+		if !f.IsExported() {
+			continue
+		}
+		c := colSpec{name: name, index: index}
 		for _, o := range opts {
 			switch o {
 			case "truncate":
@@ -540,13 +579,35 @@ func buildPlan(t reflect.Type) *typePlan {
 		}
 		p.cols = append(p.cols, c)
 	}
-	for i := range p.cols {
-		if p.cols[i].isURL {
-			p.urlField = &p.cols[i]
-			break
+}
+
+// embedded reports whether f is an anonymous struct field, and returns the
+// struct type behind it. A time.Time is a value, not a set of columns, and
+// stringify already knows how to print one.
+func embedded(f reflect.StructField) (reflect.Type, bool) {
+	if !f.Anonymous {
+		return nil, false
+	}
+	t := f.Type
+	if t.Kind() == reflect.Pointer {
+		t = t.Elem()
+	}
+	if t.Kind() != reflect.Struct || t == reflect.TypeFor[time.Time]() {
+		return nil, false
+	}
+	return t, true
+}
+
+// named reports whether a field carries an explicit column or json name, as
+// opposed to falling back to the field's own name.
+func named(f reflect.StructField) bool {
+	if tag, ok := f.Tag.Lookup("table"); ok {
+		if head, _, _ := strings.Cut(tag, ","); head != "" {
+			return true
 		}
 	}
-	return p
+	head, _, _ := strings.Cut(f.Tag.Get("json"), ",")
+	return head != ""
 }
 
 // columnName resolves a field's table column name and options, falling back to

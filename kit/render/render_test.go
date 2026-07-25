@@ -5,6 +5,7 @@ import (
 	"io"
 	"strings"
 	"testing"
+	"time"
 
 	"charm.land/lipgloss/v2"
 )
@@ -347,4 +348,131 @@ func countCellSeparators(line string) int {
 		}
 	}
 	return n
+}
+
+// base is a record type that other record types embed, the way a family of
+// records in one tool shares an id, a url, and where it came from.
+type base struct {
+	ID  string `json:"id"`
+	URL string `json:"url,omitempty" table:"url,url"`
+}
+
+type stamped struct {
+	When time.Time `json:"when"`
+}
+
+type embeddedRec struct {
+	base
+	stamped
+	Likes int    `json:"likes"`
+	Notes *notes `json:"notes,omitempty"`
+}
+
+type notes struct {
+	Body string `json:"body"`
+}
+
+// deepRec reaches its id through a nil-able embedded pointer, which is the case
+// that panics if the plan is walked with FieldByIndex.
+type deepRec struct {
+	*base
+	Likes int `json:"likes"`
+}
+
+// Base is the exported form of the same shared type. Only an exported embedded
+// type can be rendered as one cell, since an unexported one cannot be read as a
+// value.
+type Base struct {
+	ID string `json:"id"`
+}
+
+// namedEmbed keeps a name of its own, so it stays one cell instead of being
+// spread into its parts.
+type namedEmbed struct {
+	Base  `json:"base"`
+	Likes int `json:"likes"`
+}
+
+func renderValues(t *testing.T, o Options, recs ...any) string {
+	t.Helper()
+	var buf bytes.Buffer
+	o.Writer = &buf
+	r, err := New(o)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	for _, rec := range recs {
+		if err := r.Emit(rec); err != nil {
+			t.Fatalf("Emit: %v", err)
+		}
+	}
+	if err := r.Flush(); err != nil {
+		t.Fatalf("Flush: %v", err)
+	}
+	return buf.String()
+}
+
+func TestEmbeddedStructsFlattenIntoColumns(t *testing.T) {
+	out := renderValues(t, Options{Format: CSV}, &embeddedRec{
+		base:    base{ID: "a/b", URL: "https://example.test/a/b"},
+		stamped: stamped{When: time.Date(2026, 7, 25, 9, 0, 0, 0, time.UTC)},
+		Likes:   7,
+	})
+	header, _, _ := strings.Cut(out, "\n")
+	if header != "id,url,when,likes,notes" {
+		t.Fatalf("header = %q, want the embedded fields promoted", header)
+	}
+	if !strings.Contains(out, "a/b,https://example.test/a/b") {
+		t.Errorf("embedded values missing from row: %q", out)
+	}
+}
+
+func TestEmbeddedURLTagSurvivesPromotion(t *testing.T) {
+	out := renderValues(t, Options{Format: URL}, &embeddedRec{
+		base: base{ID: "a/b", URL: "https://example.test/a/b"},
+	})
+	if strings.TrimSpace(out) != "https://example.test/a/b" {
+		t.Errorf("url format = %q, want the promoted url column", out)
+	}
+}
+
+func TestNilEmbeddedPointerRendersEmpty(t *testing.T) {
+	out := renderValues(t, Options{Format: CSV}, &deepRec{Likes: 3})
+	header, row, _ := strings.Cut(out, "\n")
+	if header != "id,url,likes" {
+		t.Fatalf("header = %q, want the promoted fields", header)
+	}
+	if strings.TrimSpace(row) != ",,3" {
+		t.Errorf("row = %q, want empty cells for the nil embed", row)
+	}
+}
+
+func TestNamedEmbeddedStaysOneColumn(t *testing.T) {
+	out := renderValues(t, Options{Format: CSV}, &namedEmbed{Likes: 1})
+	header, _, _ := strings.Cut(out, "\n")
+	if header != "base,likes" {
+		t.Errorf("header = %q, want the named embed kept whole", header)
+	}
+}
+
+func TestUnexportedEmbeddedStillPromotes(t *testing.T) {
+	// encoding/json promotes the exported fields of an unexported embedded
+	// struct, and the table follows it, because the alternative is dropping
+	// fields that show up in the json output.
+	out := renderValues(t, Options{Format: CSV}, &embeddedRec{base: base{ID: "a/b"}})
+	if !strings.HasPrefix(out, "id,url,when,likes,notes\n") {
+		t.Errorf("unexported embed not promoted: %q", out)
+	}
+}
+
+func TestTimeEmbeddedIsAValueNotColumns(t *testing.T) {
+	type withTime struct {
+		time.Time
+		Likes int `json:"likes"`
+	}
+	out := renderValues(t, Options{Format: CSV}, &withTime{Likes: 2})
+	header, _, _ := strings.Cut(out, "\n")
+	if header != "time,likes" {
+		t.Errorf("header = %q, want time kept as one cell", header)
+	}
 }
