@@ -24,6 +24,7 @@
 //	table:"name,time"       format a time.Time as 2006-01-02 15:04
 //	table:"name,url"        mark the canonical URL column (used by the url format)
 //	table:"-"               never show in table/csv (still present in json)
+//	table:"-,url"           the canonical URL, but not a column of its own
 //	(no table tag)          fall back to the json tag name
 //
 // Embedded structs are flattened the way encoding/json flattens them, so a
@@ -39,6 +40,7 @@ import (
 	"fmt"
 	"io"
 	"reflect"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -536,9 +538,13 @@ func planFor(t reflect.Type) *typePlan {
 func buildPlan(t reflect.Type) *typePlan {
 	p := &typePlan{}
 	collect(t, nil, p)
+	if p.urlField != nil {
+		return p
+	}
 	for i := range p.cols {
 		if p.cols[i].isURL {
-			p.urlField = &p.cols[i]
+			c := p.cols[i]
+			p.urlField = &c
 			break
 		}
 	}
@@ -551,10 +557,16 @@ func buildPlan(t reflect.Type) *typePlan {
 func collect(t reflect.Type, prefix []int, p *typePlan) {
 	for f := range t.Fields() {
 		name, opts, skip := columnName(f)
+		index := append(append([]int(nil), prefix...), f.Index...)
 		if skip {
+			// table:"-,url" is a url the record knows but does not show. A record
+			// whose id is already its address wants the url out of the table and
+			// still wants `-o url` to work.
+			if f.IsExported() && slices.Contains(opts, "url") && p.urlField == nil {
+				p.urlField = &colSpec{name: "url", index: index, isURL: true}
+			}
 			continue
 		}
-		index := append(append([]int(nil), prefix...), f.Index...)
 		// An embedded struct with a name of its own is one cell, because that is
 		// what asking for a name means. Without one it spreads into its fields.
 		// An unexported embedded type spreads either way: its exported fields are
@@ -617,7 +629,7 @@ func columnName(f reflect.StructField) (name string, opts []string, skip bool) {
 		parts := strings.Split(tag, ",")
 		head := parts[0]
 		if head == "-" {
-			return "", nil, true
+			return "", parts[1:], true
 		}
 		if head == "" {
 			head = jsonName(f)

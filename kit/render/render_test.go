@@ -476,3 +476,20 @@ func TestTimeEmbeddedIsAValueNotColumns(t *testing.T) {
 		t.Errorf("header = %q, want time kept as one cell", header)
 	}
 }
+
+// hiddenURL keeps its address out of the table, because the id already says
+// where the record lives, and still answers the url format.
+type hiddenURL struct {
+	ID  string `json:"id"`
+	URL string `json:"url" table:"-,url"`
+}
+
+func TestHiddenURLColumnStillAnswersURLFormat(t *testing.T) {
+	rec := &hiddenURL{ID: "a/b", URL: "https://example.test/a/b"}
+	if out := renderValues(t, Options{Format: CSV}, rec); !strings.HasPrefix(out, "id\n") {
+		t.Errorf("header = %q, want the url hidden", out)
+	}
+	if out := renderValues(t, Options{Format: URL}, rec); strings.TrimSpace(out) != rec.URL {
+		t.Errorf("url format = %q, want %q", out, rec.URL)
+	}
+}
