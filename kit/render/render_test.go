@@ -533,9 +533,10 @@ type author struct {
 func (a author) String() string { return a.Login }
 
 type commitRow struct {
-	ID     string `json:"id"`
-	Author author `json:"author"`
-	When   time.Time
+	ID     string     `json:"id"`
+	Author author     `json:"author"`
+	When   time.Time  `table:",time"`
+	Seen   *time.Time `table:",time"`
 }
 
 func TestStringerFieldRendersAsItself(t *testing.T) {
@@ -547,11 +548,13 @@ func TestStringerFieldRendersAsItself(t *testing.T) {
 }
 
 // time.Time is a Stringer too, and its own formatting is the one wanted, so the
-// Stringer case must not get to it first.
+// Stringer case must not get to it first. A *time.Time is the case that gets
+// this wrong: it arrives still wrapped, so an interface check alone takes it.
 func TestTimeStillFormatsAsTime(t *testing.T) {
-	rec := &commitRow{ID: "abc", When: time.Date(2024, 3, 1, 9, 30, 0, 0, time.UTC)}
-	out := renderValues(t, Options{Format: CSV, Fields: []string{"when"}}, rec)
-	if want := "when\n2024-03-01T09:30:00Z\n"; out != want {
+	when := time.Date(2024, 3, 1, 9, 30, 0, 0, time.UTC)
+	rec := &commitRow{ID: "abc", When: when, Seen: &when}
+	out := renderValues(t, Options{Format: CSV, Fields: []string{"when", "seen"}}, rec)
+	if want := "when,seen\n2024-03-01 09:30,2024-03-01 09:30\n"; out != want {
 		t.Errorf("out = %q, want %q", out, want)
 	}
 }
