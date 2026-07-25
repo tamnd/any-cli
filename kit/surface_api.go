@@ -168,15 +168,17 @@ func (a *App) openAPI() map[string]any {
 		m := op.Meta()
 		params := []map[string]any{}
 		for _, p := range op.Params() {
-			loc := "query"
-			required := false
-			if p.Kind == KindArg {
-				continue // path args are described in the path template below
+			// Positional arguments are listed as query parameters rather than
+			// left out. They can be passed either way, and the query form is
+			// the only one that works for an argument containing a slash, which
+			// is most of them in a site-shaped API: /v1/repo?ref=owner/name.
+			if p.Kind == KindArg && p.Variadic {
+				continue
 			}
 			params = append(params, map[string]any{
 				"name":     p.Name,
-				"in":       loc,
-				"required": required,
+				"in":       "query",
+				"required": false,
 				"schema":   schemaForParam(p),
 			})
 		}
