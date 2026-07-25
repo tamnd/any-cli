@@ -521,3 +521,37 @@ func TestFieldsKeepsUnknownNameAsAnEmptyColumn(t *testing.T) {
 		t.Errorf("out = %q, want %q", out, want)
 	}
 }
+
+// author is the shape that motivated the Stringer case: a small struct inlined
+// in a bigger record, where the whole point of the table cell is the one field a
+// reader recognises.
+type author struct {
+	Login string `json:"login"`
+	URL   string `json:"url"`
+}
+
+func (a author) String() string { return a.Login }
+
+type commitRow struct {
+	ID     string `json:"id"`
+	Author author `json:"author"`
+	When   time.Time
+}
+
+func TestStringerFieldRendersAsItself(t *testing.T) {
+	rec := &commitRow{ID: "abc", Author: author{Login: "bep", URL: "https://github.com/bep"}}
+	out := renderValues(t, Options{Format: CSV, Fields: []string{"id", "author"}}, rec)
+	if want := "id,author\nabc,bep\n"; out != want {
+		t.Errorf("out = %q, want %q", out, want)
+	}
+}
+
+// time.Time is a Stringer too, and its own formatting is the one wanted, so the
+// Stringer case must not get to it first.
+func TestTimeStillFormatsAsTime(t *testing.T) {
+	rec := &commitRow{ID: "abc", When: time.Date(2024, 3, 1, 9, 30, 0, 0, time.UTC)}
+	out := renderValues(t, Options{Format: CSV, Fields: []string{"when"}}, rec)
+	if want := "when\n2024-03-01T09:30:00Z\n"; out != want {
+		t.Errorf("out = %q, want %q", out, want)
+	}
+}
