@@ -699,6 +699,16 @@ func jsonName(f reflect.StructField) string {
 	return name
 }
 
+var timeType = reflect.TypeOf(time.Time{})
+
+// isTime reports whether a type is a time, through any number of pointers.
+func isTime(t reflect.Type) bool {
+	for t != nil && t.Kind() == reflect.Pointer {
+		t = t.Elem()
+	}
+	return t == timeType
+}
+
 func stringify(v reflect.Value, c colSpec) string {
 	if !v.IsValid() {
 		return ""
@@ -715,13 +725,20 @@ func stringify(v reflect.Value, c colSpec) string {
 	// A type that says how it prints gets to say it. Without this a struct field
 	// falls through to the JSON default, and a table cell holding
 	// {"login":"bep","url":"..."} is worse than useless: it is wide enough to
-	// push every other column off the terminal. The check comes after time.Time
-	// because time is a Stringer too and its own format is the one wanted here.
-	if s, ok := v.Interface().(fmt.Stringer); ok {
-		if v.Kind() == reflect.Pointer && v.IsNil() {
-			return ""
+	// push every other column off the terminal.
+	//
+	// Time is the exception, and *time.Time is why this asks the type rather
+	// than just sitting below the check above. time.Time is a Stringer whose
+	// String is "2026-07-06 17:48:54 +0000 UTC", and a *time.Time reaches here
+	// still wrapped, so an interface check alone would take that over the
+	// column's own format on exactly the fields most likely to have one.
+	if !isTime(v.Type()) {
+		if s, ok := v.Interface().(fmt.Stringer); ok {
+			if (v.Kind() == reflect.Pointer || v.Kind() == reflect.Interface) && v.IsNil() {
+				return ""
+			}
+			return s.String()
 		}
-		return s.String()
 	}
 	switch v.Kind() {
 	case reflect.Pointer, reflect.Interface:
