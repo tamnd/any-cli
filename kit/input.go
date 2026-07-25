@@ -70,6 +70,24 @@ func (o *op[In, Out]) bind(inv *In, in Input, rt RunContext) error {
 				if err := setScalar(fv, in.Args[argi]); err != nil {
 					return fmt.Errorf("argument %s: %w", b.spec.Name, err)
 				}
+			} else if s, ok := in.Flags[b.spec.Name].(string); ok && s != "" {
+				// A positional argument can also arrive by name. The HTTP
+				// surface needs this: it takes positionals from the path, and a
+				// path splits on slashes, so an argument that contains one
+				// cannot survive the trip. GET /v1/repo/owner/name arrives as
+				// two arguments and no amount of escaping helps, because the
+				// path is decoded before it is split.
+				//
+				// Naming it instead is unambiguous for any shape:
+				// /v1/repo?ref=owner/name, and
+				// /v1/blob?ref=owner/name&path=a/b/c.go, which no positional
+				// split of the path could have got right.
+				//
+				// Positionals still win when both are present, so nothing that
+				// worked before changes.
+				if err := setScalar(fv, s); err != nil {
+					return fmt.Errorf("argument %s: %w", b.spec.Name, err)
+				}
 			}
 			argi++
 		case KindFlag:
