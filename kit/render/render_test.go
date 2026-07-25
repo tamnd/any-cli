@@ -493,3 +493,31 @@ func TestHiddenURLColumnStillAnswersURLFormat(t *testing.T) {
 		t.Errorf("url format = %q, want %q", out, rec.URL)
 	}
 }
+
+// scored hides most of itself, the way a record with sixty fields has to.
+type scored struct {
+	Meta
+	ID     string  `json:"id"`
+	Score  float64 `json:"score" table:"-"`
+	secret string
+}
+
+type Meta struct {
+	Kind string `json:"kind" table:"-"`
+}
+
+func TestFieldsReachesHiddenFields(t *testing.T) {
+	rec := &scored{Meta: Meta{Kind: "model"}, ID: "a/b", Score: 1.5, secret: "x"}
+	out := renderValues(t, Options{Format: CSV, Fields: []string{"id", "score", "kind"}}, rec)
+	if want := "id,score,kind\na/b,1.5,model\n"; out != want {
+		t.Errorf("out = %q, want %q", out, want)
+	}
+}
+
+func TestFieldsKeepsUnknownNameAsAnEmptyColumn(t *testing.T) {
+	rec := &scored{ID: "a/b"}
+	out := renderValues(t, Options{Format: CSV, Fields: []string{"id", "nope"}}, rec)
+	if want := "id,nope\na/b,\n"; out != want {
+		t.Errorf("out = %q, want %q", out, want)
+	}
+}

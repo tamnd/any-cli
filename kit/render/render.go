@@ -292,12 +292,18 @@ func (r *Renderer) columns(rec any) (cols, vals []string) {
 		}
 		rv = rv.Elem()
 	}
-	for _, c := range plan.cols {
+	for _, c := range plan.pick(r.o.Fields) {
+		cols = append(cols, c.name)
+		if c.index == nil {
+			// A requested name the type does not have. An empty column says so
+			// without dropping the rest of the projection out of line.
+			vals = append(vals, "")
+			continue
+		}
 		fv, err := rv.FieldByIndexErr(c.index)
 		if err != nil {
 			// A nil embedded pointer on the way to the field, so the record
 			// carries nothing here. An empty cell, not a panic.
-			cols = append(cols, c.name)
 			vals = append(vals, "")
 			continue
 		}
@@ -305,10 +311,9 @@ func (r *Renderer) columns(rec any) (cols, vals []string) {
 		if c.truncate && r.o.Width > 0 {
 			s = truncate(s, r.o.Width)
 		}
-		cols = append(cols, c.name)
 		vals = append(vals, oneline(s))
 	}
-	return r.project(cols, vals)
+	return cols, vals
 }
 
 func (r *Renderer) project(cols, vals []string) ([]string, []string) {
@@ -515,6 +520,7 @@ type colSpec struct {
 
 type typePlan struct {
 	cols     []colSpec
+	hidden   []colSpec // fields marked table:"-", reachable by name through --fields
 	urlField *colSpec
 }
 
@@ -535,9 +541,35 @@ func planFor(t reflect.Type) *typePlan {
 	return p
 }
 
+// pick resolves --fields against a plan. With no names it is the visible column
+// set. With names it is those names in that order, and a name may be a field the
+// type hides from the table, because hiding a field is about what a screen can
+// hold and asking for it by name settles that question.
+func (p *typePlan) pick(fields []string) []colSpec {
+	if len(fields) == 0 {
+		return p.cols
+	}
+	byName := make(map[string]colSpec, len(p.cols)+len(p.hidden))
+	for _, c := range p.hidden {
+		byName[c.name] = c
+	}
+	for _, c := range p.cols {
+		byName[c.name] = c
+	}
+	out := make([]colSpec, 0, len(fields))
+	for _, f := range fields {
+		if c, ok := byName[f]; ok {
+			out = append(out, c)
+			continue
+		}
+		out = append(out, colSpec{name: f})
+	}
+	return out
+}
+
 func buildPlan(t reflect.Type) *typePlan {
 	p := &typePlan{}
-	collect(t, nil, p)
+	collect(t, nil, p, false)
 	if p.urlField != nil {
 		return p
 	}
@@ -553,11 +585,13 @@ func buildPlan(t reflect.Type) *typePlan {
 
 // collect appends t's columns to p, walking into embedded structs so a record
 // that shares a base type through embedding shows the base type's fields as
-// columns of its own. prefix is the field index path that leads to t.
-func collect(t reflect.Type, prefix []int, p *typePlan) {
+// columns of its own. prefix is the field index path that leads to t, and hide
+// is true once the walk is inside something the table does not show.
+func collect(t reflect.Type, prefix []int, p *typePlan, hide bool) {
 	for f := range t.Fields() {
 		name, opts, skip := columnName(f)
 		index := append(append([]int(nil), prefix...), f.Index...)
+		h := hide
 		if skip {
 			// table:"-,url" is a url the record knows but does not show. A record
 			// whose id is already its address wants the url out of the table and
@@ -565,14 +599,20 @@ func collect(t reflect.Type, prefix []int, p *typePlan) {
 			if f.IsExported() && slices.Contains(opts, "url") && p.urlField == nil {
 				p.urlField = &colSpec{name: "url", index: index, isURL: true}
 			}
-			continue
+			// A hidden field is still a field, so it keeps a spec under its json
+			// name and --fields can call it back. json:"-" is the one that is
+			// really gone, since it has no name to be called by.
+			name, h = jsonName(f), true
+			if name == "-" {
+				continue
+			}
 		}
 		// An embedded struct with a name of its own is one cell, because that is
 		// what asking for a name means. Without one it spreads into its fields.
 		// An unexported embedded type spreads either way: its exported fields are
 		// reachable but the struct itself is not readable as a value.
 		if et, ok := embedded(f); ok && (!f.IsExported() || !named(f)) {
-			collect(et, index, p)
+			collect(et, index, p, h)
 			continue
 		}
 		if !f.IsExported() {
@@ -588,6 +628,10 @@ func collect(t reflect.Type, prefix []int, p *typePlan) {
 			case "url":
 				c.isURL = true
 			}
+		}
+		if h {
+			p.hidden = append(p.hidden, c)
+			continue
 		}
 		p.cols = append(p.cols, c)
 	}
