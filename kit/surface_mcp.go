@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"maps"
-	"os"
 	"sync"
 
 	"github.com/spf13/cobra"
@@ -18,6 +17,11 @@ import (
 // over stdio JSON-RPC. Each registered operation becomes one tool named
 // "<verb>"; its inputSchema is the operation's parameter schema. Escape-hatch
 // commands are not exposed.
+//
+// It says on stderr that it is listening, and how many tools it has. Typed at a
+// terminal the command is indistinguishable from a hang otherwise: a server
+// reading stdin looks exactly like a program that has stopped. stderr, because
+// stdout is the JSON-RPC channel and a banner on it is a protocol error.
 func (a *App) mcpCommand() *cobra.Command {
 	return &cobra.Command{
 		Use:    "mcp",
@@ -25,9 +29,20 @@ func (a *App) mcpCommand() *cobra.Command {
 		Hidden: false,
 		Args:   cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return a.serveMCP(cmd.Context(), os.Stdin, os.Stdout)
+			fmt.Fprintf(cmd.ErrOrStderr(), "%s mcp: %s on stdio, waiting for JSON-RPC\n",
+				a.id.Binary, tally(len(a.mcpTools()), "tool"))
+			return a.serveMCP(cmd.Context(), cmd.InOrStdin(), cmd.OutOrStdout())
 		},
 	}
+}
+
+// tally counts a thing in English, because "1 tools" in the first line a user
+// ever sees from a server reads as a tool that was written in a hurry.
+func tally(n int, noun string) string {
+	if n == 1 {
+		return "1 " + noun
+	}
+	return fmt.Sprintf("%d %ss", n, noun)
 }
 
 // JSON-RPC 2.0 envelopes.

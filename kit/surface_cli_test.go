@@ -147,3 +147,26 @@ func TestNoCLIKeepsTheOpOffTheCommandLine(t *testing.T) {
 		}
 	}
 }
+
+// A server reading stdin is indistinguishable from a program that has stopped,
+// so `mcp` says what it is on stderr before it blocks. On stderr because stdout
+// is the JSON-RPC channel, and the count because a server with no tools is worth
+// noticing on the first line rather than after a handshake.
+func TestMCPSaysItIsListening(t *testing.T) {
+	app := newTestApp()
+	root := app.buildCLI()
+	var errOut, out bytes.Buffer
+	root.SetErr(&errOut)
+	root.SetOut(&out)
+	root.SetArgs([]string{"mcp"})
+	root.SetIn(strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"tools/list"}` + "\n"))
+	if err := root.ExecuteContext(context.Background()); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	if got := errOut.String(); !strings.Contains(got, "on stdio") || !strings.Contains(got, "1 tool") {
+		t.Errorf("mcp said %q, want a line naming the transport and the tool count", got)
+	}
+	if got := out.String(); !strings.Contains(got, `"search"`) {
+		t.Errorf("tools/list answered %q, want the registered op in it", got)
+	}
+}
