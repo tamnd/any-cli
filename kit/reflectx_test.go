@@ -80,3 +80,53 @@ func TestSchemaFlattensTheEnvelope(t *testing.T) {
 		t.Error("the embedded struct came out as a property of its own")
 	}
 }
+
+// quote is a record that contains itself, which is what a quote tweet, a
+// threaded comment, and a directory entry all look like.
+type quote struct {
+	ID     string   `json:"id"`
+	Text   string   `json:"text"`
+	Quoted *quote   `json:"quoted"`
+	Nested []*quote `json:"nested"`
+}
+
+func TestASelfReferentialRecordDoesNotRecurseForever(t *testing.T) {
+	s, _ := schemaForType(reflect.TypeOf(quote{}))["properties"].(map[string]any)
+	if _, ok := s["text"]; !ok {
+		t.Fatalf("schema missing text (got %v)", s)
+	}
+	inner, _ := s["quoted"].(map[string]any)
+	if inner["type"] != "object" {
+		t.Errorf("the self-reference should still be an object, got %v", inner)
+	}
+	if _, ok := inner["properties"]; ok {
+		t.Error("the self-reference was expanded, so the walk did not stop")
+	}
+	// A slice of the same type is the other way a record cycles.
+	arr, _ := s["nested"].(map[string]any)
+	items, _ := arr["items"].(map[string]any)
+	if _, ok := items["properties"]; ok {
+		t.Error("a slice of the same type was expanded")
+	}
+}
+
+// TestTwoSiblingsOfTheSameTypeBothExpand guards the obvious way to get the fix
+// wrong: memoizing every type ever seen rather than the ones open above this
+// one, which would blank out the second of two ordinary sibling fields.
+func TestTwoSiblingsOfTheSameTypeBothExpand(t *testing.T) {
+	type inner struct {
+		Name string `json:"name"`
+	}
+	type outer struct {
+		A inner `json:"a"`
+		B inner `json:"b"`
+	}
+	s, _ := schemaForType(reflect.TypeOf(outer{}))["properties"].(map[string]any)
+	for _, f := range []string{"a", "b"} {
+		got, _ := s[f].(map[string]any)
+		props, _ := got["properties"].(map[string]any)
+		if _, ok := props["name"]; !ok {
+			t.Errorf("field %q lost its properties (got %v)", f, got)
+		}
+	}
+}
