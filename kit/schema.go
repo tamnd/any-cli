@@ -94,7 +94,7 @@ func schemaForType(t reflect.Type) map[string]any {
 			return map[string]any{"type": "string", "format": "date-time"}
 		}
 		props := map[string]any{}
-		for f := range t.Fields() {
+		for _, f := range fields(t) {
 			if !f.IsExported() {
 				continue
 			}

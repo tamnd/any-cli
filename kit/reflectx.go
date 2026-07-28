@@ -11,6 +11,45 @@ import (
 // outbound links live. It reads the same `kit:` tag grammar 8000_uri_drivers §2.3
 // defines, so a record that is already kit-correct needs no extra code to be
 // URI-addressable.
+//
+// Every lookup here walks promoted fields as well as declared ones. A record
+// that carries a shared envelope by embedding it, which is what a driver with
+// sixteen record kinds ends up doing, has its id and its links in the envelope,
+// and reflect's own Fields iterator stops at the embedded struct.
+
+// fields returns t's fields including the ones promoted from embedded structs,
+// shallowest first, so a field declared on the record itself shadows one of the
+// same name reached through an embedded type, exactly as it does in Go.
+//
+// The walk descends into embedded structs only, and never through an embedded
+// pointer: FieldByIndex panics on a nil one, and a record whose envelope is
+// optional is not a shape this reflection is for.
+func fields(t reflect.Type) []reflect.StructField {
+	var out []reflect.StructField
+	seen := map[string]bool{}
+	queue := [][]int{nil}
+	for len(queue) > 0 {
+		prefix := queue[0]
+		queue = queue[1:]
+		at := t
+		for _, i := range prefix {
+			at = at.Field(i).Type
+		}
+		for f := range at.Fields() {
+			f.Index = append(append([]int(nil), prefix...), f.Index...)
+			if f.Anonymous && f.Type.Kind() == reflect.Struct {
+				queue = append(queue, f.Index)
+				continue
+			}
+			if seen[f.Name] {
+				continue
+			}
+			seen[f.Name] = true
+			out = append(out, f)
+		}
+	}
+	return out
+}
 
 // idFieldIndex returns the index path of a struct's primary-key field: the field
 // tagged kit:"id", or failing that the field whose json name is "id". It returns
@@ -20,7 +59,7 @@ func idFieldIndex(t reflect.Type) []int {
 		return nil
 	}
 	var fallback []int
-	for f := range t.Fields() {
+	for _, f := range fields(t) {
 		if tag, ok := f.Tag.Lookup("kit"); ok && hasOpt(tag, "id") {
 			idx := append([]int(nil), f.Index...)
 			return idx
@@ -39,7 +78,7 @@ func bodyFieldIndex(t reflect.Type) []int {
 	if t == nil || t.Kind() != reflect.Struct {
 		return nil
 	}
-	for f := range t.Fields() {
+	for _, f := range fields(t) {
 		if tag, ok := f.Tag.Lookup("kit"); ok && hasHead(tag, "body") {
 			return append([]int(nil), f.Index...)
 		}
@@ -67,7 +106,7 @@ func linkFields(t reflect.Type) []linkField {
 		return nil
 	}
 	var out []linkField
-	for f := range t.Fields() {
+	for _, f := range fields(t) {
 		tag, ok := f.Tag.Lookup("kit")
 		if !ok || !hasHead(tag, "link") {
 			continue
