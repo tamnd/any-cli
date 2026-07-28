@@ -183,6 +183,11 @@ app.AddCommand(newGetCmd())
 - **`app.AddCommandUnder(parent, cmd)`** attaches an escape hatch beneath a
   parent that also hosts operations, so `crawls list` (an op) and `crawls info`
   (an escape hatch) sit side by side.
+- **`OpMeta.NoCLI`** keeps an operation off the command line while leaving it on
+  the HTTP and MCP surfaces. It is for a domain that hand-writes the CLI verb and
+  still wants the same read served: without it, registering the op shadows the
+  hand-written command, and not registering it leaves `serve` with no routes and
+  `mcp` with no tools.
 
 A run handler reaches the run's resolved config, client, and record store with
 the context:

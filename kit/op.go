@@ -22,6 +22,19 @@ type OpMeta struct {
 	Write   bool     // a state-changing op; gated and annotated on every surface
 	Single  bool     // emits at most one record (no "no results" on empty stream)
 
+	// NoCLI keeps the op off the command line while leaving it on the API and
+	// MCP surfaces. It is for a domain that hand-writes the CLI verb and still
+	// wants the same read served over HTTP and to an agent.
+	//
+	// Without it such a domain has to choose. Register the op and the generated
+	// subcommand shadows the hand-written one, which is how a carefully built
+	// table view turns into a reflected dump of every field on the record. Skip
+	// the op and `serve` answers 404 to everything while `mcp` lists no tools at
+	// all. Neither is a choice worth making, so this is the third answer: one
+	// registration, two surfaces, and the CLI keeps the command the domain
+	// wrote.
+	NoCLI bool
+
 	// URI metadata (8000_uri, 8000_uri_drivers). These make an op addressable by
 	// resource URI in a multi-domain host such as ant. They are inert on a
 	// single-site binary, so a domain can adopt them with no behavior change.

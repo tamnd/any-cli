@@ -94,6 +94,9 @@ func (a *App) buildCLI() *cobra.Command {
 	}
 
 	for _, op := range a.ops {
+		if op.Meta().NoCLI {
+			continue
+		}
 		cmd := a.opCommand(op, g)
 		if parent := op.Meta().Parent; parent != "" {
 			parentOf(parent).AddCommand(cmd)
