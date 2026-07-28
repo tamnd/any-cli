@@ -105,3 +105,68 @@ func TestCLILimitFlag(t *testing.T) {
 		t.Fatalf("limit 1 should print 1 line, got %d: %q", got, out)
 	}
 }
+
+// An op marked NoCLI is served over HTTP and MCP and is absent from the command
+// line, which is the point: a domain that hand-writes a verb still wants the
+// same read reachable by an agent, and a generated subcommand would shadow the
+// one it wrote.
+func TestNoCLIKeepsTheOpOffTheCommandLine(t *testing.T) {
+	app := New(Identity{Binary: "demo", Short: "demo", Version: "0.0.1"})
+	Handle(app, OpMeta{
+		Name: "hidden", Summary: "served but not typed", NoCLI: true,
+		Args: []Arg{{Name: "query", Help: "search text"}},
+	}, func(_ context.Context, in searchIn, emit func(repo) error) error {
+		return emit(repo{ID: in.Query, Owner: in.Query})
+	})
+	Handle(app, OpMeta{
+		Name: "shown", Summary: "served and typed",
+		Args: []Arg{{Name: "query", Help: "search text"}},
+	}, func(_ context.Context, in searchIn, emit func(repo) error) error {
+		return emit(repo{ID: in.Query, Owner: in.Query})
+	})
+
+	for _, c := range app.buildCLI().Commands() {
+		if c.Name() == "hidden" {
+			t.Error("a NoCLI op reached the command line, where it would shadow the domain's own command")
+		}
+	}
+
+	var tools []string
+	for _, tool := range app.mcpTools() {
+		tools = append(tools, tool["name"].(string))
+	}
+	want := map[string]bool{"hidden": false, "shown": false}
+	for _, name := range tools {
+		if _, ok := want[name]; ok {
+			want[name] = true
+		}
+	}
+	for name, found := range want {
+		if !found {
+			t.Errorf("MCP does not list %s, and NoCLI is about the command line only: %v", name, tools)
+		}
+	}
+}
+
+// A server reading stdin is indistinguishable from a program that has stopped,
+// so `mcp` says what it is on stderr before it blocks. On stderr because stdout
+// is the JSON-RPC channel, and the count because a server with no tools is worth
+// noticing on the first line rather than after a handshake.
+func TestMCPSaysItIsListening(t *testing.T) {
+	app := newTestApp()
+	root := app.buildCLI()
+	var errOut, out bytes.Buffer
+	root.SetErr(&errOut)
+	root.SetOut(&out)
+	root.SetArgs([]string{"mcp"})
+	root.SetIn(strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"tools/list"}` + "\n"))
+	if err := root.ExecuteContext(context.Background()); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	if got := errOut.String(); !strings.Contains(got, "on stdio") || !strings.Contains(got, "1 tool") {
+		t.Errorf("mcp said %q, want a line naming the transport and the tool count", got)
+	}
+	if got := out.String(); !strings.Contains(got, `"search"`) {
+		t.Errorf("tools/list answered %q, want the registered op in it", got)
+	}
+}
