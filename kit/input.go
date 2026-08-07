@@ -60,6 +60,22 @@ func (o *op[In, Out]) bind(inv *In, in Input, rt RunContext) error {
 		case KindArg:
 			if b.spec.Variadic {
 				rest := in.Args[min(argi, len(in.Args)):]
+				if len(rest) == 0 {
+					// A variadic argument arrives by name for the same reason a
+					// scalar one does, and it is the more common case: the HTTP
+					// surface reads positionals off the path tail, so an op
+					// registered at /v1/music/search has nowhere to put a query
+					// except ?query=..., and until this was here that query
+					// reached the handler empty.
+					//
+					// A repeated parameter is a list, one element per
+					// occurrence, and a single one is a single argument. It is
+					// not split on commas the way a string-slice flag is: a
+					// variadic positional holds whatever the shell would have
+					// passed as separate words, and a comma inside one of them
+					// is that word's own.
+					rest = namedList(in.Flags[b.spec.Name])
+				}
 				if err := setSlice(fv, rest); err != nil {
 					return fmt.Errorf("argument %s: %w", b.spec.Name, err)
 				}
@@ -119,6 +135,33 @@ func (o *op[In, Out]) bind(inv *In, in Input, rt RunContext) error {
 		}
 	}
 	return nil
+}
+
+// namedList reads a variadic argument that arrived as a named value. HTTP gives
+// a string for one occurrence and a []string for several; MCP gives whatever was
+// in the tool arguments object, which for an array of anything is []any. An
+// empty string is no arguments rather than one empty one, so ?query= behaves the
+// same as leaving it off.
+func namedList(raw any) []string {
+	switch v := raw.(type) {
+	case string:
+		if v == "" {
+			return nil
+		}
+		return []string{v}
+	case []string:
+		return v
+	case []any:
+		out := make([]string, 0, len(v))
+		for _, e := range v {
+			out = append(out, fmt.Sprint(e))
+		}
+		return out
+	case nil:
+		return nil
+	default:
+		return []string{fmt.Sprint(v)}
+	}
 }
 
 // inject fills one KindInject field from the available handles by assignability,
