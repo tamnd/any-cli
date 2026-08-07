@@ -172,9 +172,11 @@ func (a *App) openAPI() map[string]any {
 			// left out. They can be passed either way, and the query form is
 			// the only one that works for an argument containing a slash, which
 			// is most of them in a site-shaped API: /v1/repo?ref=owner/name.
-			if p.Kind == KindArg && p.Variadic {
-				continue
-			}
+			//
+			// A variadic one is listed too, as an array: repeat the parameter
+			// for more than one value, ?ref=a&ref=b. It used to be left out
+			// because there was no way to pass it, which made a search op read
+			// as an endpoint that takes nothing at all.
 			params = append(params, map[string]any{
 				"name":     p.Name,
 				"in":       "query",
