@@ -29,7 +29,9 @@ func (a *App) mcpCommand() *cobra.Command {
 		Hidden: false,
 		Args:   cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			fmt.Fprintf(cmd.ErrOrStderr(), "%s mcp: %s on stdio, waiting for JSON-RPC\n",
+			// The line is a courtesy, so a stderr that cannot take it is not
+			// worth failing the server over.
+			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "%s mcp: %s on stdio, waiting for JSON-RPC\n",
 				a.id.Binary, tally(len(a.mcpTools()), "tool"))
 			return a.serveMCP(cmd.Context(), cmd.InOrStdin(), cmd.OutOrStdout())
 		},
