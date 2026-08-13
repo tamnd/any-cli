@@ -48,6 +48,13 @@ func (a *App) buildCLI() *cobra.Command {
 		Version:       a.id.Version,
 		SilenceUsage:  true,
 		SilenceErrors: true,
+		// cobra checks the root's arguments inside Find, before the command
+		// runs, and the error it makes there is a plain one worth exit 1. Taking
+		// the check gives the same mistake the same exit code at every level.
+		// ArbitraryArgs is what turns that check off; unknownOrHelp is what puts
+		// it back.
+		Args: cobra.ArbitraryArgs,
+		RunE: unknownOrHelp,
 		PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
 			st, err := a.newState(cmd.Context(), g)
 			if err != nil {
@@ -63,6 +70,13 @@ func (a *App) buildCLI() *cobra.Command {
 			return nil
 		},
 	}
+	// A flag the parser rejects is a usage error like any other, but cobra hands
+	// it back as a plain error and it came out as exit 1 while every mistake kit
+	// catches itself came out as exit 2. The func is inherited, so setting it on
+	// the root covers every subcommand.
+	root.SetFlagErrorFunc(func(_ *cobra.Command, err error) error {
+		return errs.Usage("%s", err.Error())
+	})
 	bindGlobals(root, g)
 	if a.globalHook != nil {
 		a.globalHook(&FlagSet{fs: root.PersistentFlags()})
@@ -87,7 +101,7 @@ func (a *App) buildCLI() *cobra.Command {
 		if summary == "" {
 			summary = name + " commands"
 		}
-		p := &cobra.Command{Use: name, Short: summary}
+		p := &cobra.Command{Use: name, Short: summary, RunE: unknownOrHelp}
 		parents[name] = p
 		root.AddCommand(p)
 		return p
@@ -113,6 +127,53 @@ func (a *App) buildCLI() *cobra.Command {
 	root.AddCommand(a.serveCommand(g))
 	root.AddCommand(a.mcpCommand())
 	return root
+}
+
+// unknownOrHelp is what a command that only holds other commands does when it
+// is reached with nothing to run. No arguments is a request for help, so it
+// prints help on stdout and exits 0. Anything else is a word that matched no
+// subcommand, which is a mistake, and it is answered on stderr with exit 2.
+//
+// It exists because a command with no RunE is not runnable, and cobra returns
+// flag.ErrHelp for a command that is not runnable before it ever validates the
+// arguments. So Args: cobra.NoArgs on a group command does nothing at all:
+// "host lst -o jsonl > hosts.jsonl" wrote help into the file and exited 0, and
+// nothing in the exit code or on stderr said the list was not a list. Giving the
+// command a RunE is what gets it far enough to have an opinion.
+func unknownOrHelp(cmd *cobra.Command, args []string) error {
+	if len(args) == 0 {
+		return cmd.Help()
+	}
+	msg := fmt.Sprintf("unknown command %q for %q", args[0], cmd.CommandPath())
+	// cobra offers suggestions for the same mistake at the top level and they
+	// are usually right, so they are worth keeping. On one line rather than the
+	// list cobra prints, because this goes through fang's error box, and with no
+	// question mark on the end because fang appends a full stop to whatever it
+	// is given.
+	//
+	// The distance has to be set here. cobra defaults it in findSuggestions,
+	// which is unexported, so the exported SuggestionsFor sees zero and matches
+	// only an exact alias, which is to say nothing.
+	if !cmd.DisableSuggestions {
+		if cmd.SuggestionsMinimumDistance <= 0 {
+			cmd.SuggestionsMinimumDistance = 2
+		}
+		s := cmd.SuggestionsFor(args[0])
+		// All of them when there are several, rather than the first in command
+		// order. SuggestionsFor does not rank them, so picking one would be
+		// picking whichever happened to be registered earliest.
+		for i, name := range s {
+			switch {
+			case i == 0:
+				msg += fmt.Sprintf(", did you mean %q", name)
+			case i == len(s)-1:
+				msg += fmt.Sprintf(" or %q", name)
+			default:
+				msg += fmt.Sprintf(", %q", name)
+			}
+		}
+	}
+	return errs.Usage("%s", msg)
 }
 
 // outputFlagHelp lists the built-in output formats plus any a binary added

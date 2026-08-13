@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"os"
 	"strings"
@@ -168,5 +169,133 @@ func TestMCPSaysItIsListening(t *testing.T) {
 	}
 	if got := out.String(); !strings.Contains(got, `"search"`) {
 		t.Errorf("tools/list answered %q, want the registered op in it", got)
+	}
+}
+
+// A word that is not a subcommand is a mistake, and the answer to a mistake
+// goes on stderr with a non-zero exit. It used to go on stdout with exit 0, so
+// "demo group lst -o jsonl > out.jsonl" left the help text in out.jsonl and
+// nothing anywhere said the file was not records.
+//
+// The root and a group command both get this, and they get the same exit code
+// for it, because from where the user sits it is the same mistake.
+func TestUnknownSubcommandIsAnError(t *testing.T) {
+	app := newTestApp() // has a top-level "search"
+	Handle(app, OpMeta{
+		Name:    "list",
+		Parent:  "group",
+		Summary: "list things",
+	}, func(_ context.Context, _ struct{}, emit func(repo) error) error {
+		return emit(repo{ID: "x"})
+	})
+
+	// Each case misspells a command that exists at the level it is typed at, so
+	// each one has a suggestion to make. A near-miss of a subcommand is not a
+	// near-miss of anything at the root, and cobra is right not to guess there.
+	cases := []struct {
+		args       []string
+		typo, want string
+	}{
+		{[]string{"group", "lst"}, "lst", "list"},
+		{[]string{"serch", "go"}, "serch", "search"},
+	}
+	for _, c := range cases {
+		root := app.buildCLI()
+		var out, errOut bytes.Buffer
+		root.SetOut(&out)
+		root.SetErr(&errOut)
+		root.SetArgs(c.args)
+		err := root.ExecuteContext(context.Background())
+		if err == nil {
+			t.Errorf("%v: no error, and the help went to stdout: %q", c.args, out.String())
+			continue
+		}
+		if code := exitCodeFor(err); code != 2 {
+			t.Errorf("%v: exit code %d, want 2 for a usage error", c.args, code)
+		}
+		if want := fmt.Sprintf("unknown command %q", c.typo); !strings.Contains(err.Error(), want) {
+			t.Errorf("%v: error is %q, want it to name the word that was wrong", c.args, err)
+		}
+		// The suggestion is the reason the word is worth naming back.
+		if want := fmt.Sprintf("did you mean %q", c.want); !strings.Contains(err.Error(), want) {
+			t.Errorf("%v: error is %q, want %q", c.args, err, want)
+		}
+		if out.Len() > 0 {
+			t.Errorf("%v: wrote %q to stdout, which a redirect would have kept", c.args, out.String())
+		}
+	}
+}
+
+// No arguments at all is not a mistake, it is how you ask what is in there, so
+// it still prints help on stdout and still exits 0. This is the half of the
+// behavior that was right and had to survive making the other half an error.
+func TestBareGroupStillPrintsHelp(t *testing.T) {
+	app := New(Identity{Binary: "demo", Short: "demo", Version: "0.0.1"})
+	Handle(app, OpMeta{
+		Name:    "list",
+		Parent:  "group",
+		Summary: "list things",
+	}, func(_ context.Context, _ struct{}, emit func(repo) error) error {
+		return emit(repo{ID: "x"})
+	})
+	// The root lists the group, the group lists the op under it.
+	for args, want := range map[string]string{"group": "list things", "": "group commands"} {
+		root := app.buildCLI()
+		var out, errOut bytes.Buffer
+		root.SetOut(&out)
+		root.SetErr(&errOut)
+		root.SetArgs(strings.Fields(args))
+		if err := root.ExecuteContext(context.Background()); err != nil {
+			t.Errorf("%q: %v", args, err)
+		}
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("%q: stdout is %q, want the help holding %q", args, out.String(), want)
+		}
+	}
+}
+
+// A group written by hand rather than generated from a parent is the same shape
+// and gets the same rule. Six of ccrawl's seventeen group commands are these,
+// and they still printed help to stdout after the generated ones stopped.
+func TestHandWrittenGroupRejectsUnknownSubcommand(t *testing.T) {
+	app := New(Identity{Binary: "demo", Short: "demo", Version: "0.0.1"})
+	app.AddCommand(Command{
+		Use:   "tool",
+		Short: "a hand-written group",
+		Sub: []Command{{
+			Use:   "show",
+			Short: "show it",
+			Run:   func(context.Context, []string) error { return nil },
+		}},
+	})
+
+	root := app.buildCLI()
+	var out, errOut bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&errOut)
+	root.SetArgs([]string{"tool", "shwo"})
+	err := root.ExecuteContext(context.Background())
+	if err == nil {
+		t.Fatalf("no error, and the help went to stdout: %q", out.String())
+	}
+	if code := exitCodeFor(err); code != 2 {
+		t.Errorf("exit code %d, want 2", code)
+	}
+	if !strings.Contains(err.Error(), `did you mean "show"`) {
+		t.Errorf("error is %q, want the suggestion", err)
+	}
+	if out.Len() > 0 {
+		t.Errorf("wrote %q to stdout", out.String())
+	}
+
+	// The subcommand it does have still runs, and the group alone still helps.
+	for _, args := range [][]string{{"tool", "show"}, {"tool"}} {
+		root := app.buildCLI()
+		root.SetOut(&bytes.Buffer{})
+		root.SetErr(&bytes.Buffer{})
+		root.SetArgs(args)
+		if err := root.ExecuteContext(context.Background()); err != nil {
+			t.Errorf("%v: %v", args, err)
+		}
 	}
 }

@@ -69,6 +69,13 @@ func (c Command) cobraCommand() *cobra.Command {
 	for _, sub := range c.Sub {
 		cc.AddCommand(sub.cobraCommand())
 	}
+	// A hand-written command that only holds other commands is the same shape as
+	// a generated parent, so it answers a word it does not know the same way
+	// rather than printing help to stdout and exiting 0. One that has its own Run
+	// is not a group and keeps it.
+	if cc.RunE == nil && cc.HasSubCommands() {
+		cc.RunE = unknownOrHelp
+	}
 	return cc
 }
 
