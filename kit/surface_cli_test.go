@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
 	"io"
 	"os"
 	"strings"
@@ -177,10 +176,10 @@ func TestMCPSaysItIsListening(t *testing.T) {
 // "demo group lst -o jsonl > out.jsonl" left the help text in out.jsonl and
 // nothing anywhere said the file was not records.
 //
-// The root and a group command both get this, and they get the same exit code
-// for it, because from where the user sits it is the same mistake.
+// This is about a group command. The root already caught its own and is left
+// alone, which TestRootKeepsCobrasOwnCheck says more about.
 func TestUnknownSubcommandIsAnError(t *testing.T) {
-	app := newTestApp() // has a top-level "search"
+	app := newTestApp()
 	Handle(app, OpMeta{
 		Name:    "list",
 		Parent:  "group",
@@ -189,39 +188,57 @@ func TestUnknownSubcommandIsAnError(t *testing.T) {
 		return emit(repo{ID: "x"})
 	})
 
-	// Each case misspells a command that exists at the level it is typed at, so
-	// each one has a suggestion to make. A near-miss of a subcommand is not a
-	// near-miss of anything at the root, and cobra is right not to guess there.
-	cases := []struct {
-		args       []string
-		typo, want string
-	}{
-		{[]string{"group", "lst"}, "lst", "list"},
-		{[]string{"serch", "go"}, "serch", "search"},
+	root := app.buildCLI()
+	var out, errOut bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&errOut)
+	root.SetArgs([]string{"group", "lst"})
+	err := root.ExecuteContext(context.Background())
+	if err == nil {
+		t.Fatalf("no error, and the help went to stdout: %q", out.String())
 	}
-	for _, c := range cases {
+	if code := exitCodeFor(err); code != 2 {
+		t.Errorf("exit code %d, want 2 for a usage error", code)
+	}
+	if !strings.Contains(err.Error(), `unknown command "lst"`) {
+		t.Errorf("error is %q, want it to name the word that was wrong", err)
+	}
+	// The suggestion is the reason the word is worth naming back.
+	if !strings.Contains(err.Error(), `did you mean "list"`) {
+		t.Errorf("error is %q, want a suggestion", err)
+	}
+	if out.Len() > 0 {
+		t.Errorf("wrote %q to stdout, which a redirect would have kept", out.String())
+	}
+}
+
+// The root is cobra's to answer and stays that way. Its check runs inside Find,
+// before the command is executed at all, which is earlier than anything kit can
+// hook: the --help flag is read at the top of execute and returns help for
+// whatever command it landed on, so a RunE on the root would answer
+// "demo serch --help" with the root's own help and exit 0. Find has already
+// said no by then. The exit code is the one cobra's plain error carries.
+//
+// The cost is that the same mistake exits 1 at the root and 2 one level down.
+// That is worth less than a --help that lies about what exists.
+func TestRootKeepsCobrasOwnCheck(t *testing.T) {
+	app := newTestApp() // has a top-level "search"
+	for _, args := range [][]string{{"serch", "go"}, {"serch", "--help"}} {
 		root := app.buildCLI()
 		var out, errOut bytes.Buffer
 		root.SetOut(&out)
 		root.SetErr(&errOut)
-		root.SetArgs(c.args)
+		root.SetArgs(args)
 		err := root.ExecuteContext(context.Background())
 		if err == nil {
-			t.Errorf("%v: no error, and the help went to stdout: %q", c.args, out.String())
+			t.Errorf("%v: no error, and %d bytes went to stdout", args, out.Len())
 			continue
 		}
-		if code := exitCodeFor(err); code != 2 {
-			t.Errorf("%v: exit code %d, want 2 for a usage error", c.args, code)
-		}
-		if want := fmt.Sprintf("unknown command %q", c.typo); !strings.Contains(err.Error(), want) {
-			t.Errorf("%v: error is %q, want it to name the word that was wrong", c.args, err)
-		}
-		// The suggestion is the reason the word is worth naming back.
-		if want := fmt.Sprintf("did you mean %q", c.want); !strings.Contains(err.Error(), want) {
-			t.Errorf("%v: error is %q, want %q", c.args, err, want)
+		if !strings.Contains(err.Error(), `unknown command "serch"`) {
+			t.Errorf("%v: error is %q", args, err)
 		}
 		if out.Len() > 0 {
-			t.Errorf("%v: wrote %q to stdout, which a redirect would have kept", c.args, out.String())
+			t.Errorf("%v: wrote %q to stdout", args, out.String())
 		}
 	}
 }

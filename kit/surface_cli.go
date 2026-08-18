@@ -48,13 +48,6 @@ func (a *App) buildCLI() *cobra.Command {
 		Version:       a.id.Version,
 		SilenceUsage:  true,
 		SilenceErrors: true,
-		// cobra checks the root's arguments inside Find, before the command
-		// runs, and the error it makes there is a plain one worth exit 1. Taking
-		// the check gives the same mistake the same exit code at every level.
-		// ArbitraryArgs is what turns that check off; unknownOrHelp is what puts
-		// it back.
-		Args: cobra.ArbitraryArgs,
-		RunE: unknownOrHelp,
 		PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
 			st, err := a.newState(cmd.Context(), g)
 			if err != nil {
